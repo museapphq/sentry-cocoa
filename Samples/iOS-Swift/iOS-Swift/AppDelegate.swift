@@ -15,6 +15,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             options.logLevel = SentryLogLevel.verbose
             options.attachStacktrace = true
             options.sessionTrackingIntervalMillis = 5_000
+            options.inAppIncludes = ["hello", "you"]
         }
         
         return true

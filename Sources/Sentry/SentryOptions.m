@@ -30,6 +30,8 @@
         self.attachStacktrace = YES;
         self.maxAttachmentSize = 20 * 1024 * 1024;
         self.sendDefaultPii = NO;
+        _inAppIncludes = [NSArray new];
+        _inAppExcludes = [NSArray new];
         _sdkInfo = [[SentrySdkInfo alloc] initWithName:SentryMeta.sdkName
                                             andVersion:SentryMeta.versionString];
 
@@ -162,6 +164,17 @@
 
     if (nil != options[@"sendDefaultPii"]) {
         self.sendDefaultPii = [options[@"sendDefaultPii"] boolValue];
+    }
+
+    NSPredicate *isNSString = [NSPredicate predicateWithBlock:^BOOL(
+        id object, NSDictionary *bindings) { return [object isKindOfClass:[NSString class]]; }];
+
+    if ([options[@"inAppIncludes"] isKindOfClass:[NSArray class]]) {
+        _inAppIncludes = [options[@"inAppIncludes"] filteredArrayUsingPredicate:isNSString];
+    }
+
+    if ([options[@"inAppExcludes"] isKindOfClass:[NSArray class]]) {
+        _inAppExcludes = [options[@"inAppExcludes"] filteredArrayUsingPredicate:isNSString];
     }
 }
 
