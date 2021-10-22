@@ -11,6 +11,8 @@ FOUNDATION_EXPORT const unsigned char SentryVersionString[];
 #import "SentryAttachment.h"
 #import "SentryBreadcrumb.h"
 #import "SentryClient.h"
+#import "SentryCrash.h"
+#import "SentryCrashMonitorType.h"
 #import "SentryCrashExceptionApplication.h"
 #import "SentryDebugImageProvider.h"
 #import "SentryDebugMeta.h"
