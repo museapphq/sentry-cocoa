@@ -87,6 +87,10 @@ getBasePath()
 
 @implementation SentryCrash
 
++(void)resetState {
+    sentrycrashstate_reset();
+}
+
 // ============================================================================
 #pragma mark - Properties -
 // ============================================================================

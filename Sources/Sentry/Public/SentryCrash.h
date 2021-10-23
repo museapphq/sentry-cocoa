@@ -51,6 +51,8 @@ typedef enum {
  */
 @interface SentryCrash : NSObject
 
++(void)resetState;
+
 #pragma mark - Configuration -
 
 /** Init SentryCrash instance with custom base path. */
