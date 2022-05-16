@@ -1,9 +1,12 @@
 #import "SentryTracer.h"
 #import "PrivateSentrySDKOnly.h"
 #import "SentryAppStartMeasurement.h"
+#import "SentryClient.h"
 #import "SentryFramesTracker.h"
 #import "SentryHub+Private.h"
 #import "SentryLog.h"
+#import "SentryProfiler.h"
+#import "SentryProfilingConditionals.h"
 #import "SentrySDK+Private.h"
 #import "SentryScope.h"
 #import "SentrySpan.h"
@@ -53,11 +56,19 @@ SentryTracer ()
 static NSObject *appStartMeasurementLock;
 static BOOL appStartMeasurementRead;
 
+#if SENTRY_TARGET_PROFILING_SUPPORTED
+static SentryProfiler *_Nullable profiler;
+static NSLock *profilerLock;
+#endif
+
 + (void)initialize
 {
     if (self == [SentryTracer class]) {
         appStartMeasurementLock = [[NSObject alloc] init];
         appStartMeasurementRead = NO;
+#if SENTRY_TARGET_PROFILING_SUPPORTED
+        profilerLock = [[NSLock alloc] init];
+#endif
     }
 }
 
@@ -93,6 +104,16 @@ static BOOL appStartMeasurementRead;
             initFrozenFrames = currentFrames.frozen;
         }
 #endif
+#if SENTRY_TARGET_PROFILING_SUPPORTED
+        if ([_hub getClient].options.enableProfiling) {
+            [profilerLock lock];
+            if (profiler == nil) {
+                profiler = [[SentryProfiler alloc] init];
+                [profiler start];
+            }
+            [profilerLock unlock];
+        }
+#endif
     }
 
     return self;
@@ -123,7 +144,7 @@ static BOOL appStartMeasurementRead;
 
     SentrySpan *child = [[SentrySpan alloc] initWithTransaction:self context:context];
     @synchronized(self.children) {
-        [self.children addObject:child];
+        [_children addObject:child];
     }
 
     return child;
@@ -223,7 +244,7 @@ static BOOL appStartMeasurementRead;
 
 - (void)finish
 {
-    [self finishWithStatus:kSentrySpanStatusUndefined];
+    [self finishWithStatus:kSentrySpanStatusOk];
 }
 
 - (void)finishWithStatus:(SentrySpanStatus)status
@@ -251,10 +272,23 @@ static BOOL appStartMeasurementRead;
 
 - (void)canBeFinished
 {
+    // Transaction already finished and captured.
+    // Sending another transaction and spans with
+    // the same SentryId would be an error.
+    if (self.rootSpan.isFinished)
+        return;
+
     if (!self.isWaitingForChildren || (_waitForChildren && [self hasUnfinishedChildren]))
         return;
 
     [_rootSpan finishWithStatus:_finishStatus];
+#if SENTRY_TARGET_PROFILING_SUPPORTED
+    if ([_hub getClient].options.enableProfiling) {
+        [profilerLock lock];
+        [profiler stop];
+        [profilerLock unlock];
+    }
+#endif
     [self captureTransaction];
 }
 
@@ -263,13 +297,42 @@ static BOOL appStartMeasurementRead;
     if (_hub == nil)
         return;
 
+    @synchronized(_children) {
+        for (id<SentrySpan> span in _children) {
+            if (!span.isFinished) {
+                [span finishWithStatus:kSentrySpanStatusDeadlineExceeded];
+
+                // Unfinished children should have the same
+                // end timestamp as their parent transaction
+                span.timestamp = self.timestamp;
+            }
+        }
+    }
+
     [_hub.scope useSpan:^(id<SentrySpan> _Nullable span) {
         if (span == self) {
             [self->_hub.scope setSpan:nil];
         }
     }];
 
-    [_hub captureTransaction:[self toTransaction] withScope:_hub.scope];
+    SentryTransaction *transaction = [self toTransaction];
+    NSMutableArray<SentryEnvelopeItem *> *additionalEnvelopeItems = [NSMutableArray array];
+#if SENTRY_TARGET_PROFILING_SUPPORTED
+    if ([_hub getClient].options.enableProfiling) {
+        [profilerLock lock];
+        if (profiler != nil) {
+            SentryEnvelopeItem *profile = [profiler buildEnvelopeItemForTransaction:transaction];
+            if (profile != nil) {
+                [additionalEnvelopeItems addObject:profile];
+            }
+            profiler = nil;
+        }
+        [profilerLock unlock];
+    }
+#endif
+    [_hub captureTransaction:transaction
+                      withScope:_hub.scope
+        additionalEnvelopeItems:additionalEnvelopeItems];
 }
 
 - (SentryTransaction *)toTransaction
@@ -280,15 +343,8 @@ static BOOL appStartMeasurementRead;
 
     NSArray<id<SentrySpan>> *spans;
     @synchronized(_children) {
-
         [_children addObjectsFromArray:appStartSpans];
-
-        spans = [_children
-            filteredArrayUsingPredicate:[NSPredicate
-                                            predicateWithBlock:^BOOL(id<SentrySpan> _Nullable span,
-                                                NSDictionary<NSString *, id> *_Nullable bindings) {
-                                                return span.isFinished;
-                                            }]];
+        spans = [_children copy];
     }
 
     if (appStartMeasurement != nil) {

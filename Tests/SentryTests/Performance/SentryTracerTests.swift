@@ -111,6 +111,12 @@ class SentryTracerTests: XCTestCase {
         }
     }
     
+    func testFinish_CheckDefaultStatus() {
+        let sut = fixture.getSut()
+        sut.finish()
+        XCTAssertEqual(sut.context.status, .ok)
+    }
+    
     func testFinish_WithoutHub_DoesntCaptureTransaction() {
         let sut = SentryTracer(transactionContext: fixture.transactionContext, hub: nil, waitForChildren: false)
         
@@ -227,6 +233,34 @@ class SentryTracerTests: XCTestCase {
         fixture.hub.group.wait()
         
         assertAppStartMeasurementNotPutOnTransaction()
+    }
+    
+    func testFinish_WithUnfinishedChildren() {
+        CurrentDate.setCurrentDateProvider(DefaultCurrentDateProvider.sharedInstance())
+        let sut = fixture.getSut(waitForChildren: false)
+        let child1 = sut.startChild(operation: fixture.transactionOperation)
+        let child2 = sut.startChild(operation: fixture.transactionOperation)
+        let child3 = sut.startChild(operation: fixture.transactionOperation)
+        child2.finish()
+        
+        //Without this sleep sut.timestamp and child2.timestamp sometimes
+        //are equal we need to make sure that SentryTracer is not changing
+        //the timestamp value of proper finished spans.
+        Thread.sleep(forTimeInterval: 0.1)
+        
+        sut.finish()
+        
+        XCTAssertTrue(child1.isFinished)
+        XCTAssertEqual(child1.context.status, .deadlineExceeded)
+        XCTAssertEqual(sut.timestamp, child1.timestamp)
+        
+        XCTAssertTrue(child2.isFinished)
+        XCTAssertEqual(child2.context.status, .ok)
+        XCTAssertNotEqual(sut.timestamp, child2.timestamp)
+        
+        XCTAssertTrue(child3.isFinished)
+        XCTAssertEqual(child3.context.status, .deadlineExceeded)
+        XCTAssertEqual(sut.timestamp, child3.timestamp)
     }
     
     // Although we only run this test above the below specified versions, we expect the
@@ -360,6 +394,42 @@ class SentryTracerTests: XCTestCase {
         
         XCTAssertEqual(["key": 0], sut.data as! [String: Int])
     }
+    
+    #if os(iOS) || os(macOS) || targetEnvironment(macCatalyst)
+    func testCapturesProfile_whenProfilingEnabled() {
+        let scope = Scope()
+        let options = Options()
+        options.enableProfiling = true
+        options.tracesSampleRate = 1.0
+        let client = TestClient(options: options)!
+        let hub = TestHub(client: client, andScope: scope)
+        
+        let tracer = hub.startTransaction(transactionContext: fixture.transactionContext) as! SentryTracer
+        tracer.finish()
+        hub.group.wait()
+        
+        XCTAssertEqual("profile", hub.capturedEventsWithScopes.first?.additionalEnvelopeItems.first?.header.type)
+    }
+    
+    func testDoesNotCapturesProfile_whenProfilingDisabled() {
+        let scope = Scope()
+        let options = Options()
+        options.enableProfiling = false
+        options.tracesSampleRate = 1.0
+        let client = TestClient(options: options)!
+        let hub = TestHub(client: client, andScope: scope)
+        
+        let tracer = hub.startTransaction(transactionContext: fixture.transactionContext) as! SentryTracer
+        tracer.finish()
+        hub.group.wait()
+        
+        if let items = hub.capturedEventsWithScopes.first?.additionalEnvelopeItems {
+            for item in items {
+                XCTAssertNotEqual("profile", item.header.type)
+            }
+        }
+    }
+    #endif
     
     private func getSerializedTransaction() -> [String: Any] {
         guard let transaction = fixture.hub.capturedEventsWithScopes.first?.event else {

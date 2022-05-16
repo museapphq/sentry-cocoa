@@ -4,6 +4,8 @@ import UIKit
 class ViewController: UIViewController {
     
     @IBOutlet weak var dsnTextField: UITextField!
+    @IBOutlet weak var anrFullyBlockingButton: UIButton!
+    @IBOutlet weak var anrFillingRunLoopButton: UIButton!
     
     private let dispatchQueue = DispatchQueue(label: "ViewController")
 
@@ -40,7 +42,6 @@ class ViewController: UIViewController {
                 self.dsnTextField.backgroundColor = UIColor.systemGreen
             }
         }
-        
     }
     
     @IBAction func addBreadcrumb(_ sender: Any) {
@@ -95,6 +96,10 @@ class ViewController: UIViewController {
         SentrySDK.capture(exception: exception, scope: scope)
     }
     
+    @IBAction func captureFatalError(_ sender: Any) {
+        fatalError("This is a fatal error. Oh no 😬.")
+    }
+    
     @IBAction func captureTransaction(_ sender: Any) {
         let transaction = SentrySDK.startTransaction(name: "Some Transaction", operation: "Some Operation")
         let span = transaction.startChild(operation: "user", description: "calls out")
@@ -146,6 +151,40 @@ class ViewController: UIViewController {
         }
     }
 
+    @IBAction func anrFullyBlocking(_ sender: Any) {
+        let buttonTitle = self.anrFullyBlockingButton.currentTitle
+        var i = 0
+        
+        for _ in 0...5_000_000 {
+            i += Int.random(in: 0...10)
+            i -= 1
+            
+            self.anrFullyBlockingButton.setTitle("\(i)", for: .normal)
+        }
+        
+        self.anrFullyBlockingButton.setTitle(buttonTitle, for: .normal)
+    }
+    
+    @IBAction func anrFillingRunLoop(_ sender: Any) {
+        let buttonTitle = self.anrFillingRunLoopButton.currentTitle
+        var i = 0
+
+        dispatchQueue.async {
+            for _ in 0...100_000 {
+                i += Int.random(in: 0...10)
+                i -= 1
+                
+                DispatchQueue.main.async {
+                    self.anrFillingRunLoopButton.setTitle("Work in Progress \(i)", for: .normal)
+                }
+            }
+            
+            DispatchQueue.main.async {
+                self.anrFillingRunLoopButton.setTitle(buttonTitle, for: .normal)
+            }
+        }
+    }
+    
     @IBAction func dsnChanged(_ sender: UITextField) {
         let options = Options()
         options.dsn = sender.text
@@ -176,6 +215,19 @@ class ViewController: UIViewController {
     
     @IBAction func showNibController(_ sender: Any) {
         let nib = NibViewController()
-        present(nib, animated: true, completion: nil)
+        nib.title = "Nib View Controller"
+        navigationController?.pushViewController(nib, animated: false)
+    }
+    
+    @IBAction func showTableViewController(_ sender: Any) {
+        let controller = TableViewController(style: .plain)
+        controller.title = "Table View Controller"
+        navigationController?.pushViewController(controller, animated: false)
+    }
+    
+    @IBAction func useCoreData(_ sender: Any) {
+        let controller = CoreDataViewController()
+        controller.title = "CoreData"
+        navigationController?.pushViewController(controller, animated: false)
     }
 }

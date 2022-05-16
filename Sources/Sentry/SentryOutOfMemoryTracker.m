@@ -106,8 +106,11 @@ SentryOutOfMemoryTracker ()
 {
 #if SENTRY_HAS_UIKIT
     [NSNotificationCenter.defaultCenter removeObserver:self];
+    [self.appStateManager removeCurrentAppState];
 #endif
 }
+
+#if SENTRY_HAS_UIKIT
 
 /**
  * It is called when an App. is receiving events / It is in the foreground and when we receive a
@@ -132,23 +135,17 @@ SentryOutOfMemoryTracker ()
     // The app is terminating so it is fine to do this on the main thread.
     // Furthermore, so users can manually post UIApplicationWillTerminateNotification and then call
     // exit(0), to avoid getting false OOM when using exit(0), see GH-1252.
-    [self updateAppStateSynchronous:^(SentryAppState *appState) { appState.wasTerminated = YES; }];
+    [self.appStateManager
+        updateAppState:^(SentryAppState *appState) { appState.wasTerminated = YES; }];
 }
 
 - (void)updateAppState:(void (^)(SentryAppState *))block
 {
     // We accept the tradeoff that the app state might not be 100% up to date over blocking the main
     // thread.
-    [self.dispatchQueue dispatchAsyncWithBlock:^{ [self updateAppStateSynchronous:block]; }];
+    [self.dispatchQueue dispatchAsyncWithBlock:^{ [self.appStateManager updateAppState:block]; }];
 }
 
-- (void)updateAppStateSynchronous:(void (^)(SentryAppState *))block
-{
-    SentryAppState *appState = [self.fileManager readAppState];
-    if (nil != appState) {
-        block(appState);
-        [self.fileManager storeAppState:appState];
-    }
-}
+#endif
 
 @end

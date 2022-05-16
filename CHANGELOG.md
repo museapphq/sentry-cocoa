@@ -1,5 +1,142 @@
 # Changelog
 
+## 7.15.0
+
+### Features
+
+- Add profile data category for rate limiting (#1799)
+- Allow setting SDK info with Options initWithDict (#1793)
+- Remove ViewController name match for swizzling (#1802)
+
+### Fixes
+
+- Apply patch for SentryCrashCachedData (#1790)
+- Fix getting class data mask in SentryCrash (#1788)
+- Use pod_target_xcconfig for Podspec #1792
+- Case sensitive header import error (#1794)
+- Parsing of output from backtrace_symbols() (#1782)
+
+## 7.14.0
+
+- fix: User feedback crash (#1766)
+- feat: Attach screenshots for errors (#1751)
+- fix: Remove authenticated pointer stripping for iOS backtraces (#1757)
+- perf: Filter binary images on Sentry Crash (#1767)
+- fix: NSURL warning during SDK initialization (#1764)
+
+## 7.13.0
+
+If you are using self-hosted Sentry, this version requires Sentry version >= [21.9.0](https://github.com/getsentry/relay/blob/master/CHANGELOG.md#2190)
+to work or you have to manually disable sending client reports via the `sendClientReports` option.
+
+- feat: Add Client Reports (#1733)
+- fix: enableProfiling option via initWithDict (#1743)
+
+## 7.12.0
+
+### Important notice
+
+This release contains a fix for the sampling of transactions. The SDK applied both sample rates for events and transactions when capturing transactions. Previously, when setting sampleRate to 0.0, the SDK would discard all transactions.
+This is fixed now by ignoring the sampleRate for transactions. If you use custom values for sampleRate and traceSampleRate or traceSampler, this change will have an impact on you.
+
+If you are using profiling and self-hosted Sentry, this version requires Sentry version >= [22.3.0](https://github.com/getsentry/relay/releases/tag/22.3.0).
+
+### Various fixes & improvements
+
+- fix: Avoid race condition in SentryCrash (#1735)
+- fix: Possible endless loop for onCrashedLastRun (#1734)
+- fix: Wrongly sampling transactions (#1716)
+- feat: Add flag for UIViewControllerTracking (#1711)
+- feat: Add more info to touch event breadcrumbs (#1724)
+- feat: Add support for profiling on iOS (#1652) by @armcknight
+
+## 7.12.0-beta.0
+
+### Various fixes & improvements
+
+- feat: Add support for profiling on iOS (#1652) by @armcknight
+
+## 7.11.0
+
+- feat: Add CoreData performance tracking (#1682)
+- fix: Detecting ANRs as false OOMs (#1695)
+
+## 7.10.2
+
+- fix: Crash in UIViewControllerSwizzling (#1692)
+
+## 7.10.1
+
+- fix: Swizzling UIViewControllers crash (#1670)
+- feat: Expose Installation ID for Hybrid SDKs (#1680)
+- fix: SentryNSURLSessionTaskSearch using invalid nil parameter with NSURLSession (#1669)
+
+## 7.10.0
+
+- fix: Always tracks App start for Hybrid SDKs (#1662)
+- feat: Send SDK integrations (#1647)
+- fix: Don't track OOMs for unit tests (#1651)
+- fix: Add verification for vendor UUID in OOM logic (#1648)
+- fix crash in dirContentsCount() when dir == NULL (#1658)
+
+## 7.9.0
+
+- fix: Crash in SentrySubClassFinder (#1635)
+- fix: Set timestamp in init of event (#1629)
+- fix: Load invalid CrashState json (#1625)
+- feat: Auto I/O spans for NSData (#1557)
+
+## 7.8.0
+
+- feat: Support for fatalError, assert, precondition (#1596)
+- feat: Include unfinished spans in transactions (#1592)
+- build: Disable NSAssertions for Release Builds (#1545)
+
+## 7.7.0
+
+- feat: Send Locale with Events (#1539)
+
+## 7.6.1
+
+- fix: iOS13-Swift build (#1522)
+- fix: Check task support on setState: (#1523)
+
+## 7.6.0
+
+- fix: Create span for loadView (#1495)
+- feat: Add flag to control network requests breadcrumbs (#1505)
+- feat: Support for ignored signals with SIGN_IGN (#1489)
+
+## 7.5.4
+
+- fix: Sending OOM when SDK is closed (#1487)
+
+## 7.5.3
+
+- fix: Use swizzling instead of KVO for network tracking (#1452)
+
+## 7.5.2
+
+### Various fixes & improvements
+
+- fix: AppStart Transaction for Apps Using UIScenes (#1427) by @brustolin
+
+## 7.5.1
+
+- fix: SentryOptions initWithDict type errors (#1443)
+- fix: Transaction default status should be OK (#1439)
+- fix: AppStart Transaction for Apps Using UIScenes (#1427)
+
+## 7.5.0
+
+- feat: Add one flag to disable all swizzling (#1430)
+- fix: Dispatch Queue ARC Warning for RN (#1424)
+- fix: Dictionary Key cannot be nil, in SentryPerformanceTracer (#1434)
+
+## 7.4.8
+
+- fix: Crash when objc_getClassList returns different values (#1420)
+
 ## 7.4.7
 
 - fix: Only enable APM when traceRate set (#1417)

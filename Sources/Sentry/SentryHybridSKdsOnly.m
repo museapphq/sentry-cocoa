@@ -1,29 +1,19 @@
 #import "PrivateSentrySDKOnly.h"
 #import "SentryDebugImageProvider.h"
+#import "SentryInstallation.h"
 #import "SentrySDK+Private.h"
 #import "SentrySerialization.h"
 #import <Foundation/Foundation.h>
+#import <SentryDependencyContainer.h>
 #import <SentryFramesTracker.h>
-
-@interface
-PrivateSentrySDKOnly ()
-
-@property (nonatomic, strong) SentryDebugImageProvider *debugImageProvider;
-
-@end
 
 @implementation PrivateSentrySDKOnly
 
 static SentryOnAppStartMeasurementAvailable _onAppStartMeasurmentAvailable;
 static BOOL _appStartMeasurementHybridSDKMode = NO;
-
-- (instancetype)init
-{
-    if (self = [super init]) {
-        _debugImageProvider = [[SentryDebugImageProvider alloc] init];
-    }
-    return self;
-}
+#if SENTRY_HAS_UIKIT
+static BOOL _framesTrackingMeasurementHybridSDKMode = NO;
+#endif
 
 + (void)storeEnvelope:(SentryEnvelope *)envelope
 {
@@ -40,14 +30,19 @@ static BOOL _appStartMeasurementHybridSDKMode = NO;
     return [SentrySerialization envelopeWithData:data];
 }
 
-- (NSArray<SentryDebugMeta *> *)getDebugImages
++ (NSArray<SentryDebugMeta *> *)getDebugImages
 {
-    return [self.debugImageProvider getDebugImages];
+    return [[SentryDependencyContainer sharedInstance].debugImageProvider getDebugImages];
 }
 
 + (nullable SentryAppStartMeasurement *)appStartMeasurement
 {
     return [SentrySDK getAppStartMeasurement];
+}
+
++ (NSString *)installationID
+{
+    return [SentryInstallation id];
 }
 
 + (SentryOnAppStartMeasurementAvailable)onAppStartMeasurementAvailable
@@ -72,6 +67,16 @@ static BOOL _appStartMeasurementHybridSDKMode = NO;
 }
 
 #if SENTRY_HAS_UIKIT
+
++ (BOOL)framesTrackingMeasurementHybridSDKMode
+{
+    return _framesTrackingMeasurementHybridSDKMode;
+}
+
++ (void)setFramesTrackingMeasurementHybridSDKMode:(BOOL)framesTrackingMeasurementHybridSDKMode
+{
+    _framesTrackingMeasurementHybridSDKMode = framesTrackingMeasurementHybridSDKMode;
+}
 
 + (BOOL)isFramesTrackingRunning
 {

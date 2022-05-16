@@ -108,6 +108,12 @@ typedef enum {
  */
 @property (nonatomic, readwrite, assign) double deadlockWatchdogInterval;
 
+// We removed searchQueueNames in 4.0.0 see:
+// https://github.com/getsentry/sentry-cocoa/commit/b728c74e898e6ed3b1cab0b1cf5b6c8892b29b70,
+// because we were deferencing a pointer to the dispatch queue, which could have been deallocated by
+// the time you deference it. Also see this comment in some WebKit code:
+// https://github.com/WebKit/WebKit/blob/09225dc168d445890bb0e2a5fa8bc19aef8556f2/Source/WebCore/page/cocoa/ResourceUsageThreadCocoa.mm#L119.
+
 /** If YES, introspect memory contents during a crash.
  * Any Objective-C objects or C strings near the stack pointer or referenced by
  * cpu registers or exceptions will be recorded in the crash report, along with
@@ -262,38 +268,6 @@ typedef enum {
  * @param reportID An ID of report to delete.
  */
 - (void)deleteReportWithID:(NSNumber *)reportID;
-
-/** Report a custom, user defined exception.
- * This can be useful when dealing with scripting languages.
- *
- * If terminateProgram is true, all sentries will be uninstalled and the
- * application will terminate with an abort().
- *
- * @param name The exception name (for namespacing exception types).
- *
- * @param reason A description of why the exception occurred.
- *
- * @param language A unique language identifier.
- *
- * @param lineOfCode A copy of the offending line of code (nil = ignore).
- *
- * @param stackTrace An array of frames (dictionaries or strings) representing
- * the call stack leading to the exception (nil = ignore).
- *
- * @param logAllThreads If true, suspend all threads and log their state. Note
- * that this incurs a performance penalty, so it's best to use only on fatal
- * errors.
- *
- * @param terminateProgram If true, do not return from this function call.
- * Terminate the program instead.
- */
-- (void)reportUserException:(NSString *)name
-                     reason:(NSString *)reason
-                   language:(NSString *)language
-                 lineOfCode:(NSString *)lineOfCode
-                 stackTrace:(NSArray *)stackTrace
-              logAllThreads:(BOOL)logAllThreads
-           terminateProgram:(BOOL)terminateProgram;
 
 @end
 

@@ -1,6 +1,6 @@
 #import "SentryCrashIntegration.h"
-#import "SentryCrashAdapter.h"
 #import "SentryCrashInstallationReporter.h"
+#import "SentryCrashWrapper.h"
 #import "SentryDispatchQueueWrapper.h"
 #import "SentryEvent.h"
 #import "SentryHub.h"
@@ -13,6 +13,7 @@
 #import <SentryClient+Private.h>
 #import <SentryCrashScopeObserver.h>
 #import <SentryDefaultCurrentDateProvider.h>
+#import <SentryDependencyContainer.h>
 #import <SentrySDK+Private.h>
 #import <SentrySysctl.h>
 
@@ -23,12 +24,15 @@
 static dispatch_once_t installationToken = 0;
 static SentryCrashInstallationReporter *installation = nil;
 
+static NSString *const DEVICE_KEY = @"device";
+static NSString *const LOCALE_KEY = @"locale";
+
 @interface
 SentryCrashIntegration ()
 
 @property (nonatomic, weak) SentryOptions *options;
 @property (nonatomic, strong) SentryDispatchQueueWrapper *dispatchQueueWrapper;
-@property (nonatomic, strong) SentryCrashAdapter *crashAdapter;
+@property (nonatomic, strong) SentryCrashWrapper *crashAdapter;
 @property (nonatomic, strong) SentrySessionCrashedHandler *crashedSessionHandler;
 @property (nonatomic, strong) SentryCrashScopeObserver *scopeObserver;
 
@@ -38,14 +42,14 @@ SentryCrashIntegration ()
 
 - (instancetype)init
 {
-    self = [self initWithCrashAdapter:[SentryCrashAdapter sharedInstance]
+    self = [self initWithCrashAdapter:[SentryCrashWrapper sharedInstance]
               andDispatchQueueWrapper:[[SentryDispatchQueueWrapper alloc] init]];
 
     return self;
 }
 
 /** Internal constructor for testing */
-- (instancetype)initWithCrashAdapter:(SentryCrashAdapter *)crashAdapter
+- (instancetype)initWithCrashAdapter:(SentryCrashWrapper *)crashAdapter
              andDispatchQueueWrapper:(SentryDispatchQueueWrapper *)dispatchQueueWrapper
 {
     if (self = [super init]) {
@@ -73,13 +77,8 @@ SentryCrashIntegration ()
 {
     self.options = options;
 
-    SentryFileManager *fileManager = [[[SentrySDK currentHub] getClient] fileManager];
-    SentryAppStateManager *appStateManager = [[SentryAppStateManager alloc]
-            initWithOptions:options
-               crashAdapter:self.crashAdapter
-                fileManager:fileManager
-        currentDateProvider:[SentryDefaultCurrentDateProvider sharedInstance]
-                     sysctl:[[SentrySysctl alloc] init]];
+    SentryAppStateManager *appStateManager =
+        [SentryDependencyContainer sharedInstance].appStateManager;
     SentryOutOfMemoryLogic *logic =
         [[SentryOutOfMemoryLogic alloc] initWithOptions:options
                                            crashAdapter:self.crashAdapter
@@ -149,16 +148,11 @@ SentryCrashIntegration ()
 - (void)uninstall
 {
     if (nil != installation) {
-        // Its not really possible to uninstall SentryCrash. Best we can do is to deactivate
-        // all the monitors and clear the `onCrash` callback installed on the global handler.
-        SentryCrash *handler = [SentryCrash sharedInstance];
-        @synchronized(handler) {
-            [handler setMonitoring:SentryCrashMonitorTypeNone];
-            handler.onCrash = NULL;
-        }
+        [self.crashAdapter close];
         installationToken = 0;
     }
-    [self.crashAdapter deactivateAsyncHooks];
+
+    [NSNotificationCenter.defaultCenter removeObserver:self];
 }
 
 - (void)configureScope
@@ -229,10 +223,13 @@ SentryCrashIntegration ()
             [deviceData setValue:systemInfo[@"bootTime"] forKey:@"boot_time"];
             [deviceData setValue:systemInfo[@"timezone"] forKey:@"timezone"];
 
-            [outerScope setContextValue:deviceData forKey:@"device"];
+            NSString *locale =
+                [[NSLocale autoupdatingCurrentLocale] objectForKey:NSLocaleIdentifier];
+            [deviceData setValue:locale forKey:LOCALE_KEY];
+
+            [outerScope setContextValue:deviceData forKey:DEVICE_KEY];
 
             // APP
-
             NSMutableDictionary *appData = [NSMutableDictionary new];
             NSDictionary *infoDict = [[NSBundle mainBundle] infoDictionary];
 
@@ -264,6 +261,29 @@ SentryCrashIntegration ()
             [outerScope addObserver:self.scopeObserver];
         }];
     }
+
+    [NSNotificationCenter.defaultCenter addObserver:self
+                                           selector:@selector(currentLocaleDidChange)
+                                               name:NSCurrentLocaleDidChangeNotification
+                                             object:nil];
+}
+
+- (void)currentLocaleDidChange
+{
+    [SentrySDK.currentHub configureScope:^(SentryScope *_Nonnull scope) {
+        NSMutableDictionary<NSString *, id> *device;
+        if (scope.contextDictionary != nil && scope.contextDictionary[DEVICE_KEY] != nil) {
+            device = [[NSMutableDictionary alloc]
+                initWithDictionary:scope.contextDictionary[DEVICE_KEY]];
+        } else {
+            device = [NSMutableDictionary new];
+        }
+
+        NSString *locale = [[NSLocale autoupdatingCurrentLocale] objectForKey:NSLocaleIdentifier];
+        device[LOCALE_KEY] = locale;
+
+        [scope setContextValue:device forKey:DEVICE_KEY];
+    }];
 }
 
 @end

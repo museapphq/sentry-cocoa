@@ -4,6 +4,7 @@
 #import "SentryBreadcrumb.h"
 #import "SentryClient+Private.h"
 #import "SentryCrash.h"
+#import "SentryDependencyContainer.h"
 #import "SentryHub+Private.h"
 #import "SentryLog.h"
 #import "SentryMeta.h"
@@ -19,7 +20,7 @@ SentrySDK ()
 NS_ASSUME_NONNULL_BEGIN
 @implementation SentrySDK
 
-static SentryHub *currentHub;
+static SentryHub *_Nullable currentHub;
 static BOOL crashedLastRunCalled;
 static SentryAppStartMeasurement *sentrySDKappStartMeasurement;
 static NSObject *sentrySDKappStartMeasurementLock;
@@ -358,6 +359,8 @@ static NSObject *sentrySDKappStartMeasurementLock;
     SentryClient *client = [hub getClient];
     client.options.enabled = NO;
     [hub bindClient:nil];
+
+    [SentryDependencyContainer reset];
 
     [SentryLog logWithMessage:@"SDK closed!" andLevel:kSentryLevelDebug];
 }

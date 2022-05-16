@@ -34,7 +34,7 @@
     XCTAssertNotNil(event);
     XCTAssertEqualObjects(
         [NSDate dateWithTimeIntervalSince1970:@(1491210797).integerValue], event.timestamp);
-    XCTAssertEqual(event.debugMeta.count, (unsigned long)256);
+    XCTAssertEqual(event.debugMeta.count, (unsigned long)13);
     SentryDebugMeta *firstDebugImage = event.debugMeta.firstObject;
     XCTAssertTrue([firstDebugImage.name isEqualToString:@"/var/containers/Bundle/Application/"
                                                         @"94765405-4249-4E20-B1E7-9801C14D5645/"
@@ -74,6 +74,20 @@
     XCTAssertTrue([NSJSONSerialization isValidJSONObject:[event serialize]]);
     XCTAssertNotNil([[event serialize] valueForKeyPath:@"exception.values"]);
     XCTAssertNotNil([[event serialize] valueForKeyPath:@"threads.values"]);
+
+    XCTAssertEqualObjects([event.debugMeta[0].name lastPathComponent], @"CrashProbeiOS");
+    XCTAssertEqualObjects([event.debugMeta[1].name lastPathComponent], @"CrashLibiOS");
+    XCTAssertEqualObjects([event.debugMeta[2].name lastPathComponent], @"KSCrash");
+    XCTAssertEqualObjects([event.debugMeta[3].name lastPathComponent], @"libsystem_pthread.dylib");
+    XCTAssertEqualObjects([event.debugMeta[4].name lastPathComponent], @"libsystem_kernel.dylib");
+    XCTAssertEqualObjects([event.debugMeta[5].name lastPathComponent], @"libdyld.dylib");
+    XCTAssertEqualObjects([event.debugMeta[6].name lastPathComponent], @"libsystem_c.dylib");
+    XCTAssertEqualObjects([event.debugMeta[7].name lastPathComponent], @"AVFAudio");
+    XCTAssertEqualObjects([event.debugMeta[8].name lastPathComponent], @"Foundation");
+    XCTAssertEqualObjects([event.debugMeta[9].name lastPathComponent], @"CoreFoundation");
+    XCTAssertEqualObjects([event.debugMeta[10].name lastPathComponent], @"CFNetwork");
+    XCTAssertEqualObjects([event.debugMeta[11].name lastPathComponent], @"GraphicsServices");
+    XCTAssertEqualObjects([event.debugMeta[12].name lastPathComponent], @"UIKit");
 }
 
 /**
@@ -114,11 +128,23 @@
 
     NSDictionary *eventJson = [self getCrashReport:@"Resources/converted-event"];
 
-    NSArray *convertedDebugImages = ((NSArray *)[eventJson valueForKeyPath:@"debug_meta.images"]);
-    NSArray *serializedDebugImages
+    __block NSArray *serializedDebugImages
         = ((NSArray *)[serializedEvent valueForKeyPath:@"debug_meta.images"]);
+
+    NSArray *convertedDebugImages = [((NSArray *)[eventJson valueForKeyPath:@"debug_meta.images"])
+        filteredArrayUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(
+                                        NSDictionary *evaluatedObject,
+                                        __unused NSDictionary<NSString *, id> *bindings) {
+            for (NSDictionary *image in serializedDebugImages) {
+                if ([image[@"name"] isEqualToString:evaluatedObject[@"name"]])
+                    return true;
+            }
+            return false;
+        }]];
+    ;
+
     XCTAssertEqual(convertedDebugImages.count, serializedDebugImages.count);
-    for (NSUInteger i = 0; i < convertedDebugImages.count; i++) {
+    for (NSUInteger i = 0; i < serializedDebugImages.count; i++) {
         [self compareDict:[convertedDebugImages objectAtIndex:i]
                  withDict:[serializedDebugImages objectAtIndex:i]];
     }
@@ -242,8 +268,8 @@
 
 - (void)testFatalError
 {
-    [self isValidReport:@"Resources/fatalError"];
-    NSDictionary *rawCrash = [self getCrashReport:@"Resources/fatalError"];
+    [self isValidReport:@"Resources/fatal-error-notable-adresses"];
+    NSDictionary *rawCrash = [self getCrashReport:@"Resources/fatal-error-notable-adresses"];
     SentryCrashReportConverter *reportConverter =
         [[SentryCrashReportConverter alloc] initWithReport:rawCrash inAppLogic:self.inAppLogic];
     SentryEvent *event = [reportConverter convertReportToEvent];
@@ -251,10 +277,44 @@
         event.exceptions.firstObject.value, @"crash: > fatal error > hello my crash is here");
 }
 
+- (void)testFatalErrorBinaryiPhone
+{
+    [self testFatalErrorBinary:@"Resources/fatal-error-binary-images-iphone"
+                 expectedValue:@"iOS_Swift/ViewController.swift:53: Fatal error: Hello fatal\n"];
+}
+
+- (void)testFatalErrorBinaryMac
+{
+    [self testFatalErrorBinary:@"Resources/fatal-error-binary-images-mac"
+                 expectedValue:@"macOS_Swift/ViewController.swift:14: Assertion failed: hello\n"];
+}
+
+- (void)testFatalErrorBinarySimulator
+{
+    [self testFatalErrorBinary:@"Resources/fatal-error-binary-images-simulator"
+                 expectedValue:@"iOS_Swift/ViewController.swift:53: Fatal error: Hello fatal\n"];
+}
+
+- (void)testFatalErrorBinaryMessage2
+{
+    [self testFatalErrorBinary:@"Resources/fatal-error-binary-images-message2"
+                 expectedValue:@"iOS_Swift/ViewController.swift:53: Fatal error: Hello fatal\n"];
+}
+
+- (void)testFatalErrorBinary:(NSString *)reportPath expectedValue:(NSString *)expectedValue
+{
+    [self isValidReport:reportPath];
+    NSDictionary *rawCrash = [self getCrashReport:reportPath];
+    SentryCrashReportConverter *reportConverter =
+        [[SentryCrashReportConverter alloc] initWithReport:rawCrash inAppLogic:self.inAppLogic];
+    SentryEvent *event = [reportConverter convertReportToEvent];
+    XCTAssertEqualObjects(event.exceptions.firstObject.value, expectedValue);
+}
+
 - (void)testUserInfo
 {
-    [self isValidReport:@"Resources/fatalError"];
-    NSDictionary *rawCrash = [self getCrashReport:@"Resources/fatalError"];
+    [self isValidReport:@"Resources/fatal-error-notable-adresses"];
+    NSDictionary *rawCrash = [self getCrashReport:@"Resources/fatal-error-notable-adresses"];
     SentryCrashReportConverter *reportConverter =
         [[SentryCrashReportConverter alloc] initWithReport:rawCrash inAppLogic:self.inAppLogic];
     reportConverter.userContext = @{

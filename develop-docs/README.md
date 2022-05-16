@@ -2,9 +2,35 @@
 
 This page contains internal documentation for development.
 
+## Code Signing
+
+This repository follows the [codesiging.guide](https://codesigning.guide/) in combination with [fastlane match](https://docs.fastlane.tools/actions/match/).
+Therefore the sample apps use manual code signing, see [fastlane docs](https://docs.fastlane.tools/codesigning/xcode-project/):
+> In most cases, fastlane will work out of the box with Xcode 9 and up if you selected manual code signing and choose a provisioning profile name for each of your targets.
+
+Reach out to @philipphofmann if you need access to the match git repository.
+
+## Unit Tests with Thread Sanitizer
+
+CI runs the unit tests for one job with thread sanitizer enabled to detect race conditions.
+The Test scheme of Sentry uses `TSAN_OPTIONS` to specify the [suppression file](../Tests/ThreadSanitizer.sup) to ignore false positives or known issues.
+It's worth noting that you can use the `$(PROJECT_DIR)` to specify the path to the suppression file.
+To run the unit tests with the thread sanitizer enabled in Xcode click on edit scheme, go to tests, then open diagnostics, and enable Thread Sanitizer.
+
+### Further Reading
+
+* [ThreadSanitizerSuppressions](https://github.com/google/sanitizers/wiki/ThreadSanitizerSuppressions)
+* [Running Tests with Clang's AddressSanitizer](https://pspdfkit.com/blog/2016/test-with-asan/)
+* [Diagnosing Memory, Thread, and Crash Issues Early](https://developer.apple.com/documentation/xcode/diagnosing-memory-thread-and-crash-issues-early)
+* [Stackoverflow: ThreadSanitizer suppression file with Xcode](https://stackoverflow.com/questions/38251409/how-can-i-suppress-thread-sanitizer-warnings-in-xcode-from-an-external-library)
+
 ## Auto UI Performance Class Overview
 
 ![Auto UI Performance Class Overview](./auto-ui-performance-tracking.svg)
+
+## Performance API Overview
+
+![Performance API Overview](./performance-api.svg)
 
 ## Generating classes
 

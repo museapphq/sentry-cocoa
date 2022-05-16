@@ -26,7 +26,7 @@ class SentrySpanTests: XCTestCase {
         }
         
         func getSut(client: Client) -> Span {
-            let hub = SentryHub(client: client, andScope: nil, andCrashAdapter: TestSentryCrashAdapter.sharedInstance(), andCurrentDateProvider: currentDateProvider)
+            let hub = SentryHub(client: client, andScope: nil, andCrashWrapper: TestSentryCrashWrapper.sharedInstance(), andCurrentDateProvider: currentDateProvider)
             return hub.startTransaction(name: someTransaction, operation: someOperation)
         }
         
@@ -55,6 +55,7 @@ class SentrySpanTests: XCTestCase {
         XCTAssertEqual(span.startTimestamp, TestData.timestamp)
         XCTAssertEqual(span.timestamp, TestData.timestamp)
         XCTAssertTrue(span.isFinished)
+        XCTAssertEqual(span.context.status, .ok)
         
         let lastEvent = client.captureEventWithScopeInvocations.invocations[0].event
         XCTAssertEqual(lastEvent.transaction, fixture.someTransaction)
@@ -65,11 +66,11 @@ class SentrySpanTests: XCTestCase {
     
     func testFinishWithStatus() {
         let span = fixture.getSut()
-        span.finish(status: .ok)
+        span.finish(status: .cancelled)
         
         XCTAssertEqual(span.startTimestamp, TestData.timestamp)
         XCTAssertEqual(span.timestamp, TestData.timestamp)
-        XCTAssertEqual(span.context.status, .ok)
+        XCTAssertEqual(span.context.status, .cancelled)
         XCTAssertTrue(span.isFinished)
     }
     
@@ -89,20 +90,6 @@ class SentrySpanTests: XCTestCase {
         
         XCTAssertEqual(serializedChild["span_id"] as? String, childSpan.context.spanId.sentrySpanIdString)
         XCTAssertEqual(serializedChild["parent_span_id"] as? String, span.context.spanId.sentrySpanIdString)
-    }
-    
-    func testFinishWithUnfinishedSpanDropsSpan() {
-        let client = TestClient(options: fixture.options)!
-        let span = fixture.getSut(client: client)
-        span.startChild(operation: fixture.someOperation)
-        
-        span.finish()
-        let lastEvent = client.captureEventWithScopeInvocations.invocations[0].event
-        let serializedData = lastEvent.serialize()
-        
-        let spans = serializedData["spans"] as! [Any]
-        
-        XCTAssertEqual(spans.count, 0)
     }
     
     func testStartChildWithNameOperation() {
@@ -204,7 +191,8 @@ class SentrySpanTests: XCTestCase {
     }
     
     func testTraceHeaderSampled() {
-        let span = SentrySpan(transaction: fixture.tracer, context: SpanContext(operation: fixture.someOperation, sampled: .yes))
+        fixture.options.tracesSampleRate = 1
+        let span = fixture.getSut()
         let header = span.toTraceHeader()
         
         XCTAssertEqual(header.traceId, span.context.traceId)
