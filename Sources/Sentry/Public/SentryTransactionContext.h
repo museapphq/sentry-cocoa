@@ -13,11 +13,17 @@ SENTRY_NO_INIT
  * Transaction name
  */
 @property (nonatomic, readonly) NSString *name;
+@property (nonatomic, readonly) SentryTransactionNameSource nameSource;
 
 /**
  * Parent sampled
  */
 @property (nonatomic) SentrySampleDecision parentSampled;
+
+/**
+ * Sample rate used for this transaction
+ */
+@property (nonatomic, strong, nullable) NSNumber *sampleRate;
 
 /**
  * Init a SentryTransactionContext with given name and set other fields by default

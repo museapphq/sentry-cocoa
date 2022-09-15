@@ -3,11 +3,14 @@
 #import "SentryCrashWrapper.h"
 #import "SentryCurrentDateProvider.h"
 #import "SentryDefaultCurrentDateProvider.h"
+#import "SentryDependencyContainer.h"
 #import "SentryEnvelope.h"
 #import "SentryEnvelopeItemType.h"
+#import "SentryEvent+Private.h"
 #import "SentryFileManager.h"
 #import "SentryId.h"
 #import "SentryLog.h"
+#import "SentryProfilesSampler.h"
 #import "SentrySDK+Private.h"
 #import "SentrySamplingContext.h"
 #import "SentryScope.h"
@@ -15,7 +18,7 @@
 #import "SentryTracer.h"
 #import "SentryTracesSampler.h"
 #import "SentryTransaction.h"
-#import "SentryTransactionContext.h"
+#import "SentryTransactionContext+Private.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -25,8 +28,12 @@ SentryHub ()
 @property (nullable, nonatomic, strong) SentryClient *client;
 @property (nullable, nonatomic, strong) SentryScope *scope;
 @property (nonatomic, strong) SentryCrashWrapper *crashWrapper;
-@property (nonatomic, strong) SentryTracesSampler *sampler;
+@property (nonatomic, strong) SentryTracesSampler *tracesSampler;
+@property (nonatomic, strong) SentryProfilesSampler *profilesSampler;
 @property (nonatomic, strong) id<SentryCurrentDateProvider> currentDateProvider;
+@property (nonatomic, strong)
+    NSMutableArray<NSObject<SentryIntegrationProtocol> *> *installedIntegrations;
+@property (nonatomic, strong) NSMutableArray<NSString *> *installedIntegrationNames;
 
 @end
 
@@ -42,8 +49,14 @@ SentryHub ()
         _scope = scope;
         _sessionLock = [[NSObject alloc] init];
         _installedIntegrations = [[NSMutableArray alloc] init];
+        _installedIntegrationNames = [[NSMutableArray alloc] init];
         _crashWrapper = [SentryCrashWrapper sharedInstance];
-        _sampler = [[SentryTracesSampler alloc] initWithOptions:client.options];
+        _tracesSampler = [[SentryTracesSampler alloc] initWithOptions:client.options];
+#if SENTRY_TARGET_PROFILING_SUPPORTED
+        if (client.options.isProfilingEnabled) {
+            _profilesSampler = [[SentryProfilesSampler alloc] initWithOptions:client.options];
+        }
+#endif
         _currentDateProvider = [SentryDefaultCurrentDateProvider sharedInstance];
     }
     return self;
@@ -201,14 +214,21 @@ SentryHub ()
     return sessionCopy;
 }
 
+- (void)captureCrashEvent:(SentryEvent *)event
+{
+    [self captureCrashEvent:event withScope:self.scope];
+}
+
 /**
  * If autoSessionTracking is enabled we want to send the crash and the event together to get proper
  * numbers for release health statistics. If there are multiple crash events to be sent on the start
  * of the SDK there is currently no way to know which one belongs to the crashed session so we just
  * send the session with the first crashed event we receive.
  */
-- (void)captureCrashEvent:(SentryEvent *)event
+- (void)captureCrashEvent:(SentryEvent *)event withScope:(SentryScope *)scope
 {
+    event.isCrashEvent = YES;
+
     SentryClient *client = _client;
     if (nil == client) {
         return;
@@ -222,13 +242,13 @@ SentryHub ()
         // It can be that there is no session yet, because autoSessionTracking was just enabled and
         // there is a previous crash on disk. In this case we just send the crash event.
         if (nil != crashedSession) {
-            [client captureCrashEvent:event withSession:crashedSession withScope:self.scope];
+            [client captureCrashEvent:event withSession:crashedSession withScope:scope];
             [fileManager deleteCrashedSession];
             return;
         }
     }
 
-    [client captureCrashEvent:event withScope:self.scope];
+    [client captureCrashEvent:event withScope:scope];
 }
 
 - (SentryId *)captureTransaction:(SentryTransaction *)transaction withScope:(SentryScope *)scope
@@ -240,7 +260,8 @@ SentryHub ()
                        withScope:(SentryScope *)scope
          additionalEnvelopeItems:(NSArray<SentryEnvelopeItem *> *)additionalEnvelopeItems
 {
-    if (transaction.trace.context.sampled != kSentrySampleDecisionYes) {
+    SentrySampleDecision decision = transaction.trace.context.sampled;
+    if (decision != kSentrySampleDecisionYes) {
         [self.client recordLostEvent:kSentryDataCategoryTransaction
                               reason:kSentryDiscardReasonSampleRate];
         return SentryId.empty;
@@ -253,7 +274,7 @@ SentryHub ()
 
 - (SentryId *)captureEvent:(SentryEvent *)event
 {
-    return [self captureEvent:event withScope:[[SentryScope alloc] init]];
+    return [self captureEvent:event withScope:self.scope];
 }
 
 - (SentryId *)captureEvent:(SentryEvent *)event withScope:(SentryScope *)scope
@@ -276,8 +297,19 @@ SentryHub ()
 
 - (id<SentrySpan>)startTransactionWithName:(NSString *)name operation:(NSString *)operation
 {
+    return [self startTransactionWithContext:[[SentryTransactionContext alloc]
+                                                 initWithName:name
+                                                   nameSource:kSentryTransactionNameSourceCustom
+                                                    operation:operation]];
+}
+
+- (id<SentrySpan>)startTransactionWithName:(NSString *)name
+                                nameSource:(SentryTransactionNameSource)source
+                                 operation:(NSString *)operation
+{
     return [self
         startTransactionWithContext:[[SentryTransactionContext alloc] initWithName:name
+                                                                        nameSource:source
                                                                          operation:operation]];
 }
 
@@ -285,8 +317,21 @@ SentryHub ()
                                  operation:(NSString *)operation
                                bindToScope:(BOOL)bindToScope
 {
+    return [self startTransactionWithContext:[[SentryTransactionContext alloc]
+                                                 initWithName:name
+                                                   nameSource:kSentryTransactionNameSourceCustom
+                                                    operation:operation]
+                                 bindToScope:bindToScope];
+}
+
+- (id<SentrySpan>)startTransactionWithName:(NSString *)name
+                                nameSource:(SentryTransactionNameSource)source
+                                 operation:(NSString *)operation
+                               bindToScope:(BOOL)bindToScope
+{
     return
         [self startTransactionWithContext:[[SentryTransactionContext alloc] initWithName:name
+                                                                              nameSource:source
                                                                                operation:operation]
                               bindToScope:bindToScope];
 }
@@ -331,11 +376,46 @@ SentryHub ()
         [[SentrySamplingContext alloc] initWithTransactionContext:transactionContext
                                             customSamplingContext:customSamplingContext];
 
-    transactionContext.sampled = [_sampler sample:samplingContext];
+    SentryTracesSamplerDecision *samplerDecision = [_tracesSampler sample:samplingContext];
+    transactionContext.sampled = samplerDecision.decision;
+    transactionContext.sampleRate = samplerDecision.sampleRate;
+
+    SentryProfilesSamplerDecision *profilesSamplerDecision =
+        [_profilesSampler sample:samplingContext tracesSamplerDecision:samplerDecision];
 
     id<SentrySpan> tracer = [[SentryTracer alloc] initWithTransactionContext:transactionContext
                                                                          hub:self
+                                                     profilesSamplerDecision:profilesSamplerDecision
                                                              waitForChildren:waitForChildren];
+
+    if (bindToScope)
+        self.scope.span = tracer;
+
+    return tracer;
+}
+
+- (SentryTracer *)startTransactionWithContext:(SentryTransactionContext *)transactionContext
+                                  bindToScope:(BOOL)bindToScope
+                        customSamplingContext:(NSDictionary<NSString *, id> *)customSamplingContext
+                                  idleTimeout:(NSTimeInterval)idleTimeout
+                         dispatchQueueWrapper:(SentryDispatchQueueWrapper *)dispatchQueueWrapper
+{
+    SentrySamplingContext *samplingContext =
+        [[SentrySamplingContext alloc] initWithTransactionContext:transactionContext
+                                            customSamplingContext:customSamplingContext];
+
+    SentryTracesSamplerDecision *samplerDecision = [_tracesSampler sample:samplingContext];
+    transactionContext.sampled = samplerDecision.decision;
+    transactionContext.sampleRate = samplerDecision.sampleRate;
+
+    SentryProfilesSamplerDecision *profilesSamplerDecision =
+        [_profilesSampler sample:samplingContext tracesSamplerDecision:samplerDecision];
+
+    SentryTracer *tracer = [[SentryTracer alloc] initWithTransactionContext:transactionContext
+                                                                        hub:self
+                                                    profilesSamplerDecision:profilesSamplerDecision
+                                                                idleTimeout:idleTimeout
+                                                       dispatchQueueWrapper:dispatchQueueWrapper];
     if (bindToScope)
         self.scope.span = tracer;
 
@@ -344,7 +424,7 @@ SentryHub ()
 
 - (SentryId *)captureMessage:(NSString *)message
 {
-    return [self captureMessage:message withScope:[[SentryScope alloc] init]];
+    return [self captureMessage:message withScope:self.scope];
 }
 
 - (SentryId *)captureMessage:(NSString *)message withScope:(SentryScope *)scope
@@ -358,7 +438,7 @@ SentryHub ()
 
 - (SentryId *)captureError:(NSError *)error
 {
-    return [self captureError:error withScope:[[SentryScope alloc] init]];
+    return [self captureError:error withScope:self.scope];
 }
 
 - (SentryId *)captureError:(NSError *)error withScope:(SentryScope *)scope
@@ -377,7 +457,7 @@ SentryHub ()
 
 - (SentryId *)captureException:(NSException *)exception
 {
-    return [self captureException:exception withScope:[[SentryScope alloc] init]];
+    return [self captureException:exception withScope:self.scope];
 }
 
 - (SentryId *)captureException:(NSException *)exception withScope:(SentryScope *)scope
@@ -463,7 +543,7 @@ SentryHub ()
  */
 - (BOOL)isIntegrationInstalled:(Class)integrationClass
 {
-    for (id<SentryIntegrationProtocol> item in SentrySDK.currentHub.installedIntegrations) {
+    for (id<SentryIntegrationProtocol> item in self.installedIntegrations) {
         if ([item isKindOfClass:integrationClass]) {
             return YES;
         }
@@ -471,13 +551,9 @@ SentryHub ()
     return NO;
 }
 
-- (nullable id)getIntegration:(NSString *)integrationName
+- (BOOL)hasIntegration:(NSString *)integrationName
 {
-    NSArray *integrations = _client.options.integrations;
-    if (![integrations containsObject:integrationName]) {
-        return nil;
-    }
-    return [integrations objectAtIndex:[integrations indexOfObject:integrationName]];
+    return [self.installedIntegrationNames containsObject:integrationName];
 }
 
 - (void)setUser:(nullable SentryUser *)user

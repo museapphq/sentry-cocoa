@@ -1,33 +1,58 @@
 #import "SentryScreenshotIntegration.h"
 #import "SentryAttachment.h"
-#import "SentryClient+Private.h"
+#import "SentryCrashC.h"
 #import "SentryDependencyContainer.h"
-#import "SentryEvent.h"
+#import "SentryEvent+Private.h"
 #import "SentryHub+Private.h"
-#import "SentryLog.h"
-#import "SentryOptions+Private.h"
 #import "SentrySDK+Private.h"
 
 #if SENTRY_HAS_UIKIT
+
+void
+saveScreenShot(const char *path)
+{
+    NSString *reportPath = [NSString stringWithUTF8String:path];
+    [SentryDependencyContainer.sharedInstance.screenshot saveScreenShots:reportPath];
+}
+
 @implementation SentryScreenshotIntegration
 
-- (void)installWithOptions:(nonnull SentryOptions *)options
+- (BOOL)installWithOptions:(nonnull SentryOptions *)options
 {
-    if ([self shouldBeDisabled:options]) {
-        [options removeEnabledIntegration:NSStringFromClass([self class])];
-        return;
+    if (![super installWithOptions:options]) {
+        return NO;
     }
 
     SentryClient *client = [SentrySDK.currentHub getClient];
-    client.attachmentProcessor = self;
+    [client addAttachmentProcessor:self];
+
+    sentrycrash_setSaveScreenshots(&saveScreenShot);
+
+    return YES;
+}
+
+- (SentryIntegrationOption)integrationOptions
+{
+    return kIntegrationOptionAttachScreenshot;
+}
+
+- (void)uninstall
+{
+    sentrycrash_setSaveScreenshots(NULL);
+
+    SentryClient *client = [SentrySDK.currentHub getClient];
+    [client removeAttachmentProcessor:self];
 }
 
 - (NSArray<SentryAttachment *> *)processAttachments:(NSArray<SentryAttachment *> *)attachments
                                            forEvent:(nonnull SentryEvent *)event
 {
 
-    if (event.exceptions == nil && event.error == nil)
+    // We don't take screenshots if there is no exception/error.
+    // We dont take screenshots if the event is a crash event.
+    if ((event.exceptions == nil && event.error == nil) || event.isCrashEvent) {
         return attachments;
+    }
 
     NSArray *screenshot = [SentryDependencyContainer.sharedInstance.screenshot appScreenshots];
 
@@ -36,11 +61,8 @@
     [result addObjectsFromArray:attachments];
 
     for (int i = 0; i < screenshot.count; i++) {
-        NSString *name;
-        if (i == 0)
-            name = @"screenshot.png";
-        else
-            name = [NSString stringWithFormat:@"screenshot-%i.png", i + 1];
+        NSString *name
+            = i == 0 ? @"screenshot.png" : [NSString stringWithFormat:@"screenshot-%i.png", i + 1];
 
         SentryAttachment *att = [[SentryAttachment alloc] initWithData:screenshot[i]
                                                               filename:name
@@ -49,16 +71,6 @@
     }
 
     return result;
-}
-
-- (BOOL)shouldBeDisabled:(SentryOptions *)options
-{
-    if (!options.attachScreenshot) {
-        [SentryLog logWithMessage:@"Screenshot integration disabled." andLevel:kSentryLevelDebug];
-        return YES;
-    }
-
-    return NO;
 }
 
 @end

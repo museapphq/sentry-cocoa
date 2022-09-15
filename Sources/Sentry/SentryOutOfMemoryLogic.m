@@ -4,6 +4,7 @@
 #import <SentryCrashWrapper.h>
 #import <SentryOptions.h>
 #import <SentryOutOfMemoryLogic.h>
+#import <SentrySDK+Private.h>
 
 #if SENTRY_HAS_UIKIT
 #    import <UIKit/UIKit.h>
@@ -47,6 +48,10 @@ SentryOutOfMemoryLogic ()
         return NO;
     }
 
+    if (self.crashAdapter.isSimulatorBuild) {
+        return NO;
+    }
+
     // If the release name is different we assume it's an upgrade
     if (![currentAppState.releaseName isEqualToString:previousAppState.releaseName]) {
         return NO;
@@ -86,6 +91,12 @@ SentryOutOfMemoryLogic ()
     }
 
     if (previousAppState.isANROngoing) {
+        return NO;
+    }
+
+    // When calling SentrySDK.start twice we would wrongly report an OOM. We can only
+    // report an OOM when the SDK is started the first time.
+    if (SentrySDK.startInvocations != 1) {
         return NO;
     }
 

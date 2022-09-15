@@ -24,13 +24,14 @@
             [[SentryTransactionContext alloc] initWithOperation:@""];
         SentryTracer *tracer = [[SentryTracer alloc] initWithTransactionContext:context
                                                                             hub:hub
+                                                        profilesSamplerDecision:nil
                                                                 waitForChildren:YES];
         [tracer finish];
         child = [tracer startChildWithOperation:@"child"];
     }
 
     XCTAssertNotNil(child);
-    XCTAssertNil(child.transaction);
+    XCTAssertNil(child.tracer);
     [child finish];
 }
 

@@ -1,4 +1,6 @@
+#import "SentryDefines.h"
 #import <Foundation/Foundation.h>
+#import <SentryAppState.h>
 #import <SentryAppStateManager.h>
 #import <SentryClient+Private.h>
 #import <SentryCrashWrapper.h>
@@ -19,7 +21,9 @@ NS_ASSUME_NONNULL_BEGIN
 SentryOutOfMemoryTrackingIntegration ()
 
 @property (nonatomic, strong) SentryOutOfMemoryTracker *tracker;
+@property (nonatomic, strong) SentryANRTracker *anrTracker;
 @property (nullable, nonatomic, copy) NSString *testConfigurationFilePath;
+@property (nonatomic, strong) SentryAppStateManager *appStateManager;
 
 @end
 
@@ -34,11 +38,14 @@ SentryOutOfMemoryTrackingIntegration ()
     return self;
 }
 
-- (void)installWithOptions:(SentryOptions *)options
+- (BOOL)installWithOptions:(SentryOptions *)options
 {
-    if ([self shouldBeDisabled:options]) {
-        [options removeEnabledIntegration:NSStringFromClass([self class])];
-        return;
+    if (self.testConfigurationFilePath) {
+        return NO;
+    }
+
+    if (![super installWithOptions:options]) {
+        return NO;
     }
 
     dispatch_queue_attr_t attributes = dispatch_queue_attr_make_with_qos_class(
@@ -62,23 +69,19 @@ SentryOutOfMemoryTrackingIntegration ()
                                                 dispatchQueueWrapper:dispatchQueueWrapper
                                                          fileManager:fileManager];
     [self.tracker start];
+
+    self.anrTracker =
+        [SentryDependencyContainer.sharedInstance getANRTracker:options.appHangTimeoutInterval];
+    [self.anrTracker addListener:self];
+
+    self.appStateManager = appStateManager;
+
+    return YES;
 }
 
-- (BOOL)shouldBeDisabled:(SentryOptions *)options
+- (SentryIntegrationOption)integrationOptions
 {
-    if (!options.enableOutOfMemoryTracking) {
-        return YES;
-    }
-
-    // The testConfigurationFilePath is not nil when running unit tests. This doesn't work for UI
-    // tests though.
-    if (self.testConfigurationFilePath) {
-        [SentryLog logWithMessage:@"Won't track OOMs, because detected that unit tests are running."
-                         andLevel:kSentryLevelDebug];
-        return YES;
-    }
-
-    return NO;
+    return kIntegrationOptionEnableOutOfMemoryTracking;
 }
 
 - (void)uninstall
@@ -86,6 +89,23 @@ SentryOutOfMemoryTrackingIntegration ()
     if (nil != self.tracker) {
         [self.tracker stop];
     }
+    [self.anrTracker removeListener:self];
+}
+
+- (void)anrDetected
+{
+#if SENTRY_HAS_UIKIT
+    [self.appStateManager
+        updateAppState:^(SentryAppState *appState) { appState.isANROngoing = YES; }];
+#endif
+}
+
+- (void)anrStopped
+{
+#if SENTRY_HAS_UIKIT
+    [self.appStateManager
+        updateAppState:^(SentryAppState *appState) { appState.isANROngoing = NO; }];
+#endif
 }
 
 @end

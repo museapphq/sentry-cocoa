@@ -35,12 +35,22 @@ class SentryScreenshotIntegrationTests: XCTestCase {
 
     func test_attachScreenshot_disabled() {
         SentrySDK.start { $0.attachScreenshot = false }
-        XCTAssertNil(SentrySDK.currentHub().getClient()?.attachmentProcessor)
+        XCTAssertEqual(SentrySDK.currentHub().getClient()?.attachmentProcessors.count, 0)
+        XCTAssertFalse(sentrycrash_hasSaveScreenshotCallback())
     }
     
     func test_attachScreenshot_enabled() {
         SentrySDK.start { $0.attachScreenshot = true }
-        XCTAssertNotNil(SentrySDK.currentHub().getClient()?.attachmentProcessor)
+        XCTAssertEqual(SentrySDK.currentHub().getClient()?.attachmentProcessors.count, 1)
+        XCTAssertTrue(sentrycrash_hasSaveScreenshotCallback())
+    }
+    
+    func test_uninstall() {
+        SentrySDK.start { $0.attachScreenshot = true }
+        SentrySDK.close()
+        
+        XCTAssertNil(SentrySDK.currentHub().getClient()?.attachmentProcessors)
+        XCTAssertFalse(sentrycrash_hasSaveScreenshotCallback())
     }
     
     func test_attachScreenShot_withError() {
@@ -90,6 +100,16 @@ class SentryScreenshotIntegrationTests: XCTestCase {
     func test_noScreenshot_attachment() {
         let sut = fixture.getSut()
         let event = Event()
+        
+        let newAttachmentList = sut.processAttachments([], for: event)
+        
+        XCTAssertEqual(newAttachmentList?.count, 0)
+    }
+    
+    func test_noScreenShot_CrashEvent() {
+        let sut = fixture.getSut()
+        let event = Event(error: NSError(domain: "", code: -1))
+        event.isCrashEvent = true
         
         let newAttachmentList = sut.processAttachments([], for: event)
         

@@ -5,6 +5,7 @@ func clearTestState() {
     SentrySDK.close()
     SentrySDK.setCurrentHub(nil)
     SentrySDK.crashedLastRunCalled = false
+    SentrySDK.startInvocations = 0
     
     PrivateSentrySDKOnly.onAppStartMeasurementAvailable = nil
     PrivateSentrySDKOnly.appStartMeasurementHybridSDKMode = false
@@ -16,6 +17,9 @@ func clearTestState() {
     let framesTracker = SentryFramesTracker.sharedInstance()
     framesTracker.stop()
     framesTracker.resetFrames()
+    
+    setenv("ActivePrewarm", "0", 1)
+    SentryAppStartTracker.load()
     #endif
     
     SentryDependencyContainer.reset()

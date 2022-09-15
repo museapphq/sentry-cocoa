@@ -16,6 +16,8 @@ SENTRY_NO_INIT
 
 - (BOOL)isBeingTraced;
 
+- (BOOL)isSimulatorBuild;
+
 - (BOOL)isApplicationInForeground;
 
 - (void)installAsyncHooks;
@@ -25,6 +27,12 @@ SENTRY_NO_INIT
  * clear the `onCrash` callback installed on the global handler, and a few more minor things.
  */
 - (void)close;
+
+- (NSDictionary *)systemInfo;
+
+- (uint64_t)freeMemory;
+
+- (uint64_t)appMemory;
 
 @end
 

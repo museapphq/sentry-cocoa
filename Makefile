@@ -1,9 +1,20 @@
-init:
+.PHONY: init
+init: setup-git
 	which brew || /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 	brew bundle
 	rbenv install --skip-existing
 	rbenv exec gem update bundler
 	rbenv exec bundle update
+
+.PHONY: init-samples
+init-samples: init
+	cd Samples/TrendingMovies && carthage update --use-xcframeworks
+
+.PHONY: setup-git
+setup-git:
+ifneq (, $(shell which pre-commit))
+	pre-commit install
+endif
 
 lint:
 	@echo "--> Running Swiftlint and Clang-Format"
@@ -14,10 +25,10 @@ lint:
 # Format all h,c,cpp and m files
 format:
 	@find . -type f \( -name "*.h" -or -name "*.hpp" -or -name "*.c" -or -name "*.cpp" -or -name "*.m" -or -name "*.mm" \) -and \
-		! \( -path "**.build/*" -or -path "**/libs/**" \) \
+		! \( -path "**.build/*" -or -path "**Build/*" -or -path "**/Carthage/Checkouts/*"  -or -path "**/libs/**" \) \
 		| xargs clang-format -i -style=file
-	
-	swiftlint autocorrect
+
+	swiftlint --fix
 .PHONY: format
 
 test:
@@ -26,7 +37,7 @@ test:
 .PHONY: test
 
 run-test-server:
-	cd ./test-server && swift build 
+	cd ./test-server && swift build
 	cd ./test-server && swift run &
 .PHONY: run-test-server
 

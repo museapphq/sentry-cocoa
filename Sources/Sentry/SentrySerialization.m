@@ -8,7 +8,7 @@
 #import "SentryLog.h"
 #import "SentrySdkInfo.h"
 #import "SentrySession.h"
-#import "SentryTraceState.h"
+#import "SentryTraceContext.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -47,9 +47,9 @@ NS_ASSUME_NONNULL_BEGIN
         [serializedData addEntriesFromDictionary:[sdkInfo serialize]];
     }
 
-    SentryTraceState *traceState = envelope.header.traceState;
-    if (traceState != nil) {
-        [serializedData setValue:[traceState serialize] forKey:@"trace"];
+    SentryTraceContext *traceContext = envelope.header.traceContext;
+    if (traceContext != nil) {
+        [serializedData setValue:[traceContext serialize] forKey:@"trace"];
     }
 
     NSData *header = [SentrySerialization dataWithJSONObject:serializedData error:error];
@@ -107,11 +107,63 @@ NS_ASSUME_NONNULL_BEGIN
     return envelopeData;
 }
 
++ (NSString *)baggageEncodedDictionary:(NSDictionary *)dictionary
+{
+    NSMutableArray *items = [[NSMutableArray alloc] initWithCapacity:dictionary.count];
+
+    NSMutableCharacterSet *allowedSet = [NSCharacterSet.alphanumericCharacterSet mutableCopy];
+    [allowedSet addCharactersInString:@"-_."];
+    NSInteger currentSize = 0;
+
+    for (id key in dictionary.allKeys) {
+        id value = dictionary[key];
+        NSString *keyDescription =
+            [[key description] stringByAddingPercentEncodingWithAllowedCharacters:allowedSet];
+        NSString *valueDescription =
+            [[value description] stringByAddingPercentEncodingWithAllowedCharacters:allowedSet];
+
+        NSString *item = [NSString stringWithFormat:@"%@=%@", keyDescription, valueDescription];
+        if (item.length + currentSize <= SENTRY_BAGGAGE_MAX_SIZE) {
+            currentSize += item.length
+                + 1; // +1 is to account for the comma that will be added for each extra itemapp
+            [items addObject:item];
+        }
+    }
+
+    return [[items sortedArrayUsingComparator:^NSComparisonResult(NSString *obj1, NSString *obj2) {
+        return [obj1 compare:obj2];
+    }] componentsJoinedByString:@","];
+}
+
++ (NSDictionary<NSString *, NSString *> *)decodeBaggage:(NSString *)baggage
+{
+    if (baggage == nil || baggage.length == 0) {
+        return @{};
+    }
+
+    NSMutableDictionary *decoded = [[NSMutableDictionary alloc] init];
+
+    NSArray<NSString *> *properties = [baggage componentsSeparatedByString:@","];
+
+    for (NSString *property in properties) {
+        NSArray<NSString *> *parts = [property componentsSeparatedByString:@"="];
+        if (parts.count != 2) {
+            continue;
+        }
+        NSString *key = parts[0];
+        NSString *value = [parts[1] stringByRemovingPercentEncoding];
+        decoded[key] = value;
+    }
+
+    return decoded.copy;
+}
+
 + (SentryEnvelope *_Nullable)envelopeWithData:(NSData *)data
 {
     SentryEnvelopeHeader *envelopeHeader = nil;
     const unsigned char *bytes = [data bytes];
     int envelopeHeaderIndex = 0;
+
     for (int i = 0; i < data.length; ++i) {
         if (bytes[i] == '\n') {
             envelopeHeaderIndex = i;
@@ -144,24 +196,32 @@ NS_ASSUME_NONNULL_BEGIN
                     sdkInfo = [[SentrySdkInfo alloc] initWithDict:headerDictionary];
                 }
 
-                SentryTraceState *traceState = nil;
+                SentryTraceContext *traceContext = nil;
                 if (nil != headerDictionary[@"trace"]) {
-                    traceState = [[SentryTraceState alloc] initWithDict:headerDictionary[@"trace"]];
+                    traceContext =
+                        [[SentryTraceContext alloc] initWithDict:headerDictionary[@"trace"]];
                 }
 
                 envelopeHeader = [[SentryEnvelopeHeader alloc] initWithId:eventId
                                                                   sdkInfo:sdkInfo
-                                                               traceState:traceState];
+                                                             traceContext:traceContext];
             }
             break;
         }
     }
+
     if (nil == envelopeHeader) {
         [SentryLog logWithMessage:[NSString stringWithFormat:@"Invalid envelope. No header found."]
                          andLevel:kSentryLevelError];
         return nil;
     }
+
     NSAssert(envelopeHeaderIndex > 0, @"EnvelopeHeader was parsed, its index is expected.");
+    if (envelopeHeaderIndex == 0) {
+        NSLog(@"EnvelopeHeader was parsed, its index is expected.");
+        return nil;
+    }
+
     // Parse items
     NSInteger itemHeaderStart = envelopeHeaderIndex + 1;
 
@@ -323,7 +383,7 @@ NS_ASSUME_NONNULL_BEGIN
         return kSentryLevelError;
     }
 
-    return [SentryLevelMapper levelWithString:eventDictionary[@"level"]];
+    return sentryLevelForString(eventDictionary[@"level"]);
 }
 
 @end

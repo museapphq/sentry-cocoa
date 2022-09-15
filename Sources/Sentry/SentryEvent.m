@@ -7,6 +7,7 @@
 #import "SentryDebugMeta.h"
 #import "SentryException.h"
 #import "SentryId.h"
+#import "SentryLevelMapper.h"
 #import "SentryMessage.h"
 #import "SentryMeta.h"
 #import "SentryStacktrace.h"
@@ -14,6 +15,13 @@
 #import "SentryUser.h"
 
 NS_ASSUME_NONNULL_BEGIN
+
+@interface
+SentryEvent ()
+
+@property (nonatomic) BOOL isCrashEvent;
+
+@end
 
 @implementation SentryEvent
 
@@ -55,7 +63,7 @@ NS_ASSUME_NONNULL_BEGIN
                                               .mutableCopy;
 
     if (self.level != kSentryLevelNone) {
-        [serializedData setValue:SentryLevelNames[self.level] forKey:@"level"];
+        [serializedData setValue:nameForSentryLevel(self.level) forKey:@"level"];
     }
 
     [self addSimpleProperties:serializedData];
@@ -111,7 +119,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (void)addSimpleProperties:(NSMutableDictionary *)serializedData
 {
-    [serializedData setValue:self.sdk forKey:@"sdk"];
+    [serializedData setValue:[self.sdk sentry_sanitize] forKey:@"sdk"];
     [serializedData setValue:self.releaseName forKey:@"release"];
     [serializedData setValue:self.dist forKey:@"dist"];
     [serializedData setValue:self.environment forKey:@"environment"];
@@ -131,7 +139,7 @@ NS_ASSUME_NONNULL_BEGIN
 
     [serializedData setValue:[self serializeBreadcrumbs] forKey:@"breadcrumbs"];
 
-    [serializedData setValue:self.context forKey:@"contexts"];
+    [serializedData setValue:[self.context sentry_sanitize] forKey:@"contexts"];
 
     if (nil != self.message) {
         [serializedData setValue:[self.message serialize] forKey:@"message"];

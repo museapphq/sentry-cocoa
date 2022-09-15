@@ -34,6 +34,7 @@
 #import "SentryCrashMonitor_AppState.h"
 #import "SentryCrashMonitor_System.h"
 #import "SentryCrashReportFields.h"
+#import "SentryCrashReportStore.h"
 #import "SentryCrashSystemCapabilities.h"
 #import <NSData+Sentry.h>
 
@@ -99,7 +100,6 @@ getBasePath()
 @synthesize userInfo = _userInfo;
 @synthesize deleteBehaviorAfterSendAll = _deleteBehaviorAfterSendAll;
 @synthesize monitoring = _monitoring;
-@synthesize deadlockWatchdogInterval = _deadlockWatchdogInterval;
 @synthesize onCrash = _onCrash;
 @synthesize bundleName = _bundleName;
 @synthesize basePath = _basePath;
@@ -168,7 +168,7 @@ getBasePath()
         if (userInfo != nil) {
             userInfoJSON = [[SentryCrashJSONCodec encode:userInfo
                                                  options:SentryCrashJSONEncodeOptionSorted
-                                                   error:&error] nullTerminated];
+                                                   error:&error] sentry_nullTerminated];
             if (error != NULL) {
                 SentryCrashLOG_ERROR(@"Could not serialize user info: %@", error);
                 return;
@@ -183,12 +183,6 @@ getBasePath()
 - (void)setMonitoring:(SentryCrashMonitorType)monitoring
 {
     _monitoring = sentrycrash_setMonitoring(monitoring);
-}
-
-- (void)setDeadlockWatchdogInterval:(double)deadlockWatchdogInterval
-{
-    _deadlockWatchdogInterval = deadlockWatchdogInterval;
-    sentrycrash_setDeadlockWatchdogInterval(deadlockWatchdogInterval);
 }
 
 - (void)setOnCrash:(SentryCrashReportWriteCallback)onCrash
@@ -263,7 +257,6 @@ getBasePath()
     COPY_PRIMITIVE(cpuSubType);
     COPY_PRIMITIVE(binaryCPUType);
     COPY_PRIMITIVE(binaryCPUSubType);
-    COPY_STRING(timezone);
     COPY_STRING(processName);
     COPY_PRIMITIVE(processID);
     COPY_PRIMITIVE(parentProcessID);
@@ -411,6 +404,28 @@ SYNTHESIZE_CRASH_STATE_PROPERTY(BOOL, crashedLastLaunch)
     return nil;
 }
 
+- (NSArray<NSString *> *)getAttachmentPaths:(int64_t)reportID
+{
+    char report_attachments_path[SentryCrashCRS_MAX_PATH_LENGTH];
+    sentrycrashcrs_getAttachmentsPath_forReportId(reportID, report_attachments_path);
+    NSString *path = [NSString stringWithUTF8String:report_attachments_path];
+
+    BOOL isDir = false;
+    if (![NSFileManager.defaultManager fileExistsAtPath:path isDirectory:&isDir] || !isDir)
+        return @[];
+
+    NSArray *files = [NSFileManager.defaultManager contentsOfDirectoryAtPath:path error:nil];
+    if (files == nil)
+        return @[];
+
+    NSMutableArray *result = [[NSMutableArray alloc] initWithCapacity:files.count];
+    [files enumerateObjectsUsingBlock:^(id _Nonnull obj, NSUInteger idx, BOOL *_Nonnull stop) {
+        [result addObject:[NSString stringWithFormat:@"%@/%@", path, obj]];
+    }];
+
+    return result;
+}
+
 - (void)doctorReport:(NSMutableDictionary *)report
 {
     NSMutableDictionary *crashReport = report[@SentryCrashField_Crash];
@@ -456,6 +471,7 @@ SYNTHESIZE_CRASH_STATE_PROPERTY(BOOL, crashedLastLaunch)
                              | SentryCrashJSONDecodeOptionIgnoreNullInObject
                              | SentryCrashJSONDecodeOptionKeepPartialObject
                                error:&error];
+
     if (error != nil) {
         SentryCrashLOG_ERROR(
             @"Encountered error loading crash report %" PRIx64 ": %@", reportID, error);
@@ -464,6 +480,12 @@ SYNTHESIZE_CRASH_STATE_PROPERTY(BOOL, crashedLastLaunch)
         SentryCrashLOG_ERROR(@"Could not load crash report");
         return nil;
     }
+
+    NSArray *attachments = [self getAttachmentPaths:reportID];
+    if (attachments.count > 0) {
+        crashReport[SENTRYCRASH_REPORT_ATTACHMENTS_ITEM] = attachments;
+    }
+
     [self doctorReport:crashReport];
 
     return crashReport;

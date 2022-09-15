@@ -8,6 +8,7 @@
 #import "SentryHub+Private.h"
 #import "SentryLog.h"
 #import "SentryMeta.h"
+#import "SentryOptions+Private.h"
 #import "SentryScope.h"
 
 @interface
@@ -25,10 +26,21 @@ static BOOL crashedLastRunCalled;
 static SentryAppStartMeasurement *sentrySDKappStartMeasurement;
 static NSObject *sentrySDKappStartMeasurementLock;
 
+/**
+ * @brief We need to keep track of the number of times @c +[startWith...] is called, because our OOM
+ * reporting breaks if it's called more than once.
+ * @discussion This doesn't just protect from multiple sequential calls to start the SDK, so we
+ * can't simply @c dispatch_once the logic inside the start method; there is also a valid workflow
+ * where a consumer could start the SDK, then call @c +[close] and then start again, and we want to
+ * reenable the integrations.
+ */
+static NSUInteger startInvocations;
+
 + (void)initialize
 {
     if (self == [SentrySDK class]) {
         sentrySDKappStartMeasurementLock = [[NSObject alloc] init];
+        startInvocations = 0;
     }
 }
 
@@ -100,6 +112,22 @@ static NSObject *sentrySDKappStartMeasurementLock;
     }
 }
 
+/**
+ * Not public, only for internal use.
+ */
++ (NSUInteger)startInvocations
+{
+    return startInvocations;
+}
+
+/**
+ * Only needed for testing.
+ */
++ (void)setStartInvocations:(NSUInteger)value
+{
+    startInvocations = value;
+}
+
 + (void)startWithOptions:(NSDictionary<NSString *, id> *)optionsDict
 {
     NSError *error = nil;
@@ -116,6 +144,8 @@ static NSObject *sentrySDKappStartMeasurementLock;
 
 + (void)startWithOptionsObject:(SentryOptions *)options
 {
+    startInvocations++;
+
     [SentryLog configure:options.debug diagnosticLevel:options.diagnosticLevel];
     SentryClient *newClient = [[SentryClient alloc] initWithOptions:options];
     // The Hub needs to be initialized with a client so that closing a session
@@ -139,6 +169,11 @@ static NSObject *sentrySDKappStartMeasurementLock;
     [SentrySDK.currentHub captureCrashEvent:event];
 }
 
++ (void)captureCrashEvent:(SentryEvent *)event withScope:(SentryScope *)scope
+{
+    [SentrySDK.currentHub captureCrashEvent:event withScope:scope];
+}
+
 + (SentryId *)captureEvent:(SentryEvent *)event
 {
     return [SentrySDK captureEvent:event withScope:SentrySDK.currentHub.scope];
@@ -158,14 +193,37 @@ static NSObject *sentrySDKappStartMeasurementLock;
 
 + (id<SentrySpan>)startTransactionWithName:(NSString *)name operation:(NSString *)operation
 {
-    return [SentrySDK.currentHub startTransactionWithName:name operation:operation];
+    return [self startTransactionWithName:name
+                               nameSource:kSentryTransactionNameSourceCustom
+                                operation:operation];
+}
+
++ (id<SentrySpan>)startTransactionWithName:(NSString *)name
+                                nameSource:(SentryTransactionNameSource)source
+                                 operation:(NSString *)operation
+{
+    return [SentrySDK.currentHub startTransactionWithName:name
+                                               nameSource:source
+                                                operation:operation];
 }
 
 + (id<SentrySpan>)startTransactionWithName:(NSString *)name
                                  operation:(NSString *)operation
                                bindToScope:(BOOL)bindToScope
 {
+    return [self startTransactionWithName:name
+                               nameSource:kSentryTransactionNameSourceCustom
+                                operation:operation
+                              bindToScope:bindToScope];
+}
+
++ (id<SentrySpan>)startTransactionWithName:(NSString *)name
+                                nameSource:(SentryTransactionNameSource)source
+                                 operation:(NSString *)operation
+                               bindToScope:(BOOL)bindToScope
+{
     return [SentrySDK.currentHub startTransactionWithName:name
+                                               nameSource:source
                                                 operation:operation
                                               bindToScope:bindToScope];
 }
@@ -330,11 +388,14 @@ static NSObject *sentrySDKappStartMeasurementLock;
             continue;
         }
         id<SentryIntegrationProtocol> integrationInstance = [[integrationClass alloc] init];
-        [integrationInstance installWithOptions:options];
-        [SentryLog
-            logWithMessage:[NSString stringWithFormat:@"Integration installed: %@", integrationName]
-                  andLevel:kSentryLevelDebug];
-        [SentrySDK.currentHub.installedIntegrations addObject:integrationInstance];
+        BOOL shouldInstall = [integrationInstance installWithOptions:options];
+        if (shouldInstall) {
+            [SentryLog logWithMessage:[NSString stringWithFormat:@"Integration installed: %@",
+                                                integrationName]
+                             andLevel:kSentryLevelDebug];
+            [SentrySDK.currentHub.installedIntegrations addObject:integrationInstance];
+            [SentrySDK.currentHub.installedIntegrationNames addObject:integrationName];
+        }
     }
 }
 

@@ -1319,9 +1319,6 @@ writeError(const SentryCrashReportWriter *const writer, const char *const key,
 
         // Gather specific info.
         switch (crash->crashType) {
-        case SentryCrashMonitorTypeMainThreadDeadlock:
-            writer->addStringElement(writer, SentryCrashField_Type, SentryCrashExcType_Deadlock);
-            break;
 
         case SentryCrashMonitorTypeMachException:
             writer->addStringElement(writer, SentryCrashField_Type, SentryCrashExcType_Mach);
@@ -1625,8 +1622,6 @@ writeSystemInfo(const SentryCrashReportWriter *const writer, const char *const k
             writer, SentryCrashField_BinaryCPUType, monitorContext->System.binaryCPUType);
         writer->addIntegerElement(
             writer, SentryCrashField_BinaryCPUSubType, monitorContext->System.binaryCPUSubType);
-        writer->addStringElement(
-            writer, SentryCrashField_TimeZone, monitorContext->System.timezone);
         writer->addStringElement(
             writer, SentryCrashField_ProcessName, monitorContext->System.processName);
         writer->addIntegerElement(
