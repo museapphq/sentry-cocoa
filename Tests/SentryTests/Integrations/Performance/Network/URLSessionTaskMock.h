@@ -29,6 +29,8 @@ static int64_t const DATA_BYTES_SENT = 652;
 
 - (void)setError:(nullable NSError *)error;
 
+- (void)setCurrentRequest:(NSURLRequest *)request;
+
 @end
 
 @interface URLSessionDownloadTaskMock : NSURLSessionDownloadTask <URLSessionTaskMock>
@@ -68,6 +70,8 @@ static int64_t const DATA_BYTES_SENT = 652;
 - (instancetype)initWithRequest:(NSURLRequest *)request;
 
 - (NSURLRequest *)currentRequest NS_UNAVAILABLE;
+
+- (NSURLSessionTaskState)state;
 
 @end
 

@@ -1,4 +1,5 @@
 import Sentry
+import SentryTestUtils
 import XCTest
 
 #if os(iOS) || os(tvOS) || targetEnvironment(macCatalyst)
@@ -10,9 +11,14 @@ class SentryUIEventTrackerTests: XCTestCase {
         let hub = SentryHub(client: TestClient(options: Options()), andScope: nil)
         let dispatchQueue = TestSentryDispatchQueueWrapper()
         let button = UIButton()
+
+        init () {
+            dispatchQueue.blockBeforeMainBlock = { false }
+            SentryDependencyContainer.sharedInstance().swizzleWrapper = swizzleWrapper
+        }
         
         func getSut() -> SentryUIEventTracker {
-            return SentryUIEventTracker(swizzleWrapper: swizzleWrapper, dispatchQueueWrapper: dispatchQueue, idleTimeout: 3.0)
+            return SentryUIEventTracker(dispatchQueueWrapper: dispatchQueue, idleTimeout: 3.0)
         }
     }
 
@@ -191,7 +197,7 @@ class SentryUIEventTrackerTests: XCTestCase {
         assertFinishesTransaction(firstTransaction, operationClick)
     }
     
-    func testFinishedTransaction_DoesntFinishImmidiately_KeepsTransactionInMemory() {
+    func testFinishedTransaction_DoesntFinishImmediately_KeepsTransactionInMemory() {
         
         // We want firstTransaction to be deallocated by ARC
         func startChild() -> Span {
@@ -252,7 +258,7 @@ class SentryUIEventTrackerTests: XCTestCase {
         
         XCTAssertEqual(name, span.transactionContext.name)
         XCTAssertEqual(nameSource, span.transactionContext.nameSource)
-        XCTAssertEqual(operation, span.context.operation)
+        XCTAssertEqual(operation, span.operation)
     }
     
     private func assertNoTransaction() {
@@ -267,7 +273,7 @@ class SentryUIEventTrackerTests: XCTestCase {
     
     private func assertFinishesTransaction(_ transaction: SentryTracer, _ operation: String) {
         XCTAssertTrue(transaction.isFinished)
-        XCTAssertEqual(.ok, transaction.context.status)
+        XCTAssertEqual(.ok, transaction.status)
         assertTransaction(name: "SentryTests.FirstViewController.\(expectedAction)", operation: operation)
         
         let transactions = getInternalTransactions()

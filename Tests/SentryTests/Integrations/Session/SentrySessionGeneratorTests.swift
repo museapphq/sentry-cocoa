@@ -1,11 +1,12 @@
 @testable import Sentry
+import SentryTestUtils
 import XCTest
 
 /**
 * This isn't an actual test. It sends Sessions to the Sentry, but doesn't verify if they arrive there.
 */
 @available(OSX 10.10, *)
-class SentrySessionGeneratorTests: XCTestCase {
+class SentrySessionGeneratorTests: NotificationCenterTestCase {
     
     struct Sessions {
         var healthy = 0
@@ -36,17 +37,13 @@ class SentrySessionGeneratorTests: XCTestCase {
         options.integrations = Options.defaultIntegrations().filter { (name) -> Bool in
             return name != "SentryAutoSessionTrackingIntegration"
         }
+
+        fileManager = try! SentryFileManager(options: options, dispatchQueueWrapper: TestSentryDispatchQueueWrapper())
         
-        do {
-            fileManager = try SentryFileManager(options: options, andCurrentDateProvider: DefaultCurrentDateProvider.sharedInstance())
-            
-            fileManager.deleteCurrentSession()
-            fileManager.deleteCrashedSession()
-            fileManager.deleteTimestampLastInForeground()
-            fileManager.deleteAppState()
-        } catch {
-            XCTFail("Could not delete session data")
-        }
+        fileManager.deleteCurrentSession()
+        fileManager.deleteCrashedSession()
+        fileManager.deleteTimestampLastInForeground()
+        fileManager.deleteAppState()
     }
     
     override func tearDown() {
@@ -145,7 +142,7 @@ class SentrySessionGeneratorTests: XCTestCase {
         
         sentryCrash = TestSentryCrashWrapper.sharedInstance()
         let client = SentrySDK.currentHub().getClient()
-        let hub = SentryHub(client: client, andScope: nil, andCrashWrapper: self.sentryCrash, andCurrentDateProvider: DefaultCurrentDateProvider.sharedInstance())
+        let hub = SentryHub(client: client, andScope: nil, andCrashWrapper: self.sentryCrash)
         SentrySDK.setCurrentHub(hub)
         
         crashIntegration = SentryCrashIntegration(crashAdapter: sentryCrash, andDispatchQueueWrapper: TestSentryDispatchQueueWrapper())
@@ -156,18 +153,14 @@ class SentrySessionGeneratorTests: XCTestCase {
     }
     
     private func goToForeground(forSeconds: TimeInterval = 0.2) {
-        TestNotificationCenter.willEnterForeground()
-        TestNotificationCenter.didBecomeActive()
+        willEnterForeground()
+        didBecomeActive()
         delayNonBlocking(timeout: forSeconds)
     }
     
     private func goToBackground(forSeconds: TimeInterval = 0.2) {
-        TestNotificationCenter.willResignActive()
-        TestNotificationCenter.didEnterBackground()
+        willResignActive()
+        didEnterBackground()
         delayNonBlocking(timeout: forSeconds)
-    }
-    
-    private func terminateApp() {
-        TestNotificationCenter.willTerminate()
     }
 }

@@ -1,3 +1,4 @@
+import SentryTestUtils
 import XCTest
 
 class SentryTraceContextTests: XCTestCase {
@@ -17,6 +18,7 @@ class SentryTraceContextTests: XCTestCase {
         let publicKey = "SentrySessionTrackerTests"
         let releaseName = "SentrySessionTrackerIntegrationTests"
         let environment = "debug"
+        let sampled = "true"
         
         init() {
             options = Options()
@@ -25,14 +27,14 @@ class SentryTraceContextTests: XCTestCase {
             options.environment = environment
             options.sendDefaultPii = true
             
-            tracer = SentryTracer(transactionContext: TransactionContext(name: transactionName, operation: transactionOperation), hub: nil)
-            
+            tracer = SentryTracer(transactionContext: TransactionContext(name: transactionName, operation: transactionOperation, sampled: .yes), hub: nil)
+
             scope = Scope()
             scope.setUser(User(userId: userId))
-            scope.userObject?.data = ["segment": "Test Segment"]
+            scope.userObject?.segment = userSegment
             scope.span = tracer
             
-            traceId = tracer.context.traceId
+            traceId = tracer.traceId
         }
     }
     
@@ -56,7 +58,8 @@ class SentryTraceContextTests: XCTestCase {
             environment: fixture.environment,
             transaction: fixture.transactionName,
             userSegment: fixture.userSegment,
-            sampleRate: fixture.sampleRate)
+            sampleRate: fixture.sampleRate,
+            sampled: fixture.sampled)
         
         assertTraceState(traceContext: traceContext)
     }
@@ -71,20 +74,18 @@ class SentryTraceContextTests: XCTestCase {
         let traceContext = SentryTraceContext(tracer: fixture.tracer, scope: fixture.scope, options: fixture.options)
         assertTraceState(traceContext: traceContext!)
     }
+
+    func testInitWithTracerNotSampled() {
+        let tracer = fixture.tracer
+        tracer.sampled = .no
+        let traceContext = SentryTraceContext(tracer: tracer, scope: fixture.scope, options: fixture.options)
+        XCTAssertEqual(traceContext?.sampled, "false")
+    }
     
     func testInitNil() {
         fixture.scope.span = nil
         let traceContext = SentryTraceContext(scope: fixture.scope, options: fixture.options)
         XCTAssertNil(traceContext)
-    }
-    
-    func testUserSegment_wrongData() {
-        var traceContext = SentryTraceContext(scope: fixture.scope, options: fixture.options)
-        XCTAssertNotNil(traceContext?.userSegment)
-        XCTAssertEqual(traceContext?.userSegment, "Test Segment")
-        fixture.scope.userObject?.data = ["segment": 5]
-        traceContext = SentryTraceContext(scope: fixture.scope, options: fixture.options)
-        XCTAssertNil(traceContext?.userSegment)
     }
     
     func test_toBaggage() {
@@ -95,7 +96,8 @@ class SentryTraceContextTests: XCTestCase {
             environment: fixture.environment,
             transaction: fixture.transactionName,
             userSegment: fixture.userSegment,
-            sampleRate: fixture.sampleRate)
+            sampleRate: fixture.sampleRate,
+            sampled: fixture.sampled)
         
         let baggage = traceContext.toBaggage()
         
@@ -105,6 +107,7 @@ class SentryTraceContextTests: XCTestCase {
         XCTAssertEqual(baggage.environment, fixture.environment)
         XCTAssertEqual(baggage.userSegment, fixture.userSegment)
         XCTAssertEqual(baggage.sampleRate, fixture.sampleRate)
+        XCTAssertEqual(baggage.sampled, fixture.sampled)
     }
         
     func assertTraceState(traceContext: SentryTraceContext) {
@@ -114,6 +117,7 @@ class SentryTraceContextTests: XCTestCase {
         XCTAssertEqual(traceContext.environment, fixture.environment)
         XCTAssertEqual(traceContext.transaction, fixture.transactionName)
         XCTAssertEqual(traceContext.userSegment, fixture.userSegment)
+        XCTAssertEqual(traceContext.sampled, fixture.sampled)
     }
     
 }

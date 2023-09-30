@@ -1,3 +1,4 @@
+import SentryTestUtils
 import XCTest
 
 class SentrySessionTestsSwift: XCTestCase {
@@ -7,7 +8,7 @@ class SentrySessionTestsSwift: XCTestCase {
     override func setUp() {
         super.setUp()
         currentDateProvider = TestCurrentDateProvider()
-        CurrentDate.setCurrentDateProvider(currentDateProvider)
+        SentryDependencyContainer.sharedInstance().dateProvider = currentDateProvider
     }
     
     func testEndSession() {
@@ -96,5 +97,26 @@ class SentrySessionTestsSwift: XCTestCase {
         var serialized = expected.serialize()
         setValue(&serialized)
         XCTAssertNil(SentrySession(jsonObject: serialized))
+    }
+    
+    func testSerialize_Bools() {
+        let session = SentrySession(releaseName: "")
+
+        var json = session.serialize()
+        json["init"] = 2
+        
+        let session2 = SentrySession(jsonObject: json)
+        
+        let result = session2!.serialize() 
+        
+        XCTAssertTrue(result["init"] as? Bool ?? false)
+        XCTAssertNotEqual(2, result["init"] as? NSNumber ?? 2)
+        
+    }
+}
+
+extension SentrySessionStatus {
+    var description: String {
+        return nameForSentrySessionStatus(self)
     }
 }

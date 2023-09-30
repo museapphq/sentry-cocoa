@@ -4,12 +4,10 @@
 
 @implementation TestSentrySpan
 
-@synthesize context;
-@synthesize data;
-@synthesize isFinished;
-@synthesize tags;
-@synthesize startTimestamp;
-@synthesize timestamp;
+- (instancetype)init
+{
+    return self;
+}
 
 - (id<SentrySpan>)startChildWithOperation:(NSString *)operation description:(NSString *)description
 {
@@ -56,6 +54,14 @@
 }
 
 - (void)setTagValue:(nonnull NSString *)value forKey:(nonnull NSString *)key
+{
+}
+
+- (void)setMeasurement:(nonnull NSString *)name value:(nonnull NSNumber *)value
+{
+}
+
+- (void)setMeasurement:(NSString *)name value:(NSNumber *)value unit:(SentryMeasurementUnit *)unit
 {
 }
 

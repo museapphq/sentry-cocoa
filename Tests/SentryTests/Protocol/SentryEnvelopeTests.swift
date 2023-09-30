@@ -1,3 +1,4 @@
+import SentryTestUtils
 import XCTest
 
 class SentryEnvelopeTests: XCTestCase {
@@ -23,11 +24,9 @@ class SentryEnvelopeTests: XCTestCase {
         }
 
         var breadcrumb: Breadcrumb {
-            get {
-                let crumb = Breadcrumb(level: SentryLevel.debug, category: "ui.lifecycle")
-                crumb.message = "first breadcrumb"
-                return crumb
-            }
+            let crumb = Breadcrumb(level: SentryLevel.debug, category: "ui.lifecycle")
+            crumb.message = "first breadcrumb"
+            return crumb
         }
 
         var event: Event {
@@ -54,7 +53,7 @@ class SentryEnvelopeTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        CurrentDate.setCurrentDateProvider(TestCurrentDateProvider())
+        SentryDependencyContainer.sharedInstance().dateProvider = TestCurrentDateProvider()
     }
     
     override func tearDown() {
@@ -159,7 +158,7 @@ class SentryEnvelopeTests: XCTestCase {
     
     func testInitSentryEnvelopeHeader_SetIdAndTraceState() {
         let eventId = SentryId()
-        let traceContext = SentryTraceContext(trace: SentryId(), publicKey: "publicKey", releaseName: "releaseName", environment: "environment", transaction: "transaction", userSegment: nil, sampleRate: nil)
+        let traceContext = SentryTraceContext(trace: SentryId(), publicKey: "publicKey", releaseName: "releaseName", environment: "environment", transaction: "transaction", userSegment: nil, sampleRate: nil, sampled: nil)
         
         let envelopeHeader = SentryEnvelopeHeader(id: eventId, traceContext: traceContext)
         XCTAssertEqual(eventId, envelopeHeader.eventId)
@@ -176,7 +175,7 @@ class SentryEnvelopeTests: XCTestCase {
         let event = fixture.event
         let envelope = SentryEnvelope(event: event)
 
-        let expectedData = try SentrySerialization.data(withJSONObject: event.serialize())
+        let expectedData = SentrySerialization.data(withJSONObject: event.serialize())!
 
         XCTAssertEqual(event.eventId, envelope.header.eventId)
         XCTAssertEqual(1, envelope.items.count)
@@ -205,7 +204,7 @@ class SentryEnvelopeTests: XCTestCase {
             json.assertContains(event.releaseName ?? "", "releaseName")
             json.assertContains(event.environment ?? "", "environment")
             
-            json.assertContains(String(format: "%.0f", CurrentDate.date().timeIntervalSince1970), "timestamp")
+            json.assertContains(String(format: "%.0f", SentryDependencyContainer.sharedInstance().dateProvider.date().timeIntervalSince1970), "timestamp")
         }
     }
     
@@ -221,7 +220,7 @@ class SentryEnvelopeTests: XCTestCase {
         XCTAssertEqual("user_report", item?.header.type)
         XCTAssertNotNil(item?.data)
         
-        let expectedData = try SentrySerialization.data(withJSONObject: userFeedback.serialize())
+        let expectedData = SentrySerialization.data(withJSONObject: userFeedback.serialize())!
 
         let actual = String(data: item?.data ?? Data(), encoding: .utf8)?.sorted()
         let expected = String(data: expectedData, encoding: .utf8)?.sorted()
@@ -245,11 +244,31 @@ class SentryEnvelopeTests: XCTestCase {
         let attachment = Attachment(path: fixture.path)
         
         let envelopeItem = SentryEnvelopeItem(attachment: attachment, maxAttachmentSize: fixture.maxAttachmentSize)!
-        
+
+        guard let header = envelopeItem.header as? SentryEnvelopeAttachmentHeader else {
+            XCTFail("Header should be SentryEnvelopeAttachmentHeader")
+            return
+        }
+
+        XCTAssertEqual(header.attachmentType, .eventAttachment)
         XCTAssertEqual("attachment", envelopeItem.header.type)
         XCTAssertEqual(UInt(fixture.data?.count ?? 0), envelopeItem.header.length)
         XCTAssertEqual(attachment.filename, envelopeItem.header.filename)
         XCTAssertEqual(attachment.contentType, envelopeItem.header.contentType)
+    }
+
+    func testInitWith_ViewHierarchy_Attachment() {
+        writeDataToFile(data: fixture.data ?? Data())
+
+        let attachment = Attachment(path: fixture.path, filename: "filename", contentType: "text", attachmentType: .viewHierarchy)
+
+        let envelopeItem = SentryEnvelopeItem(attachment: attachment, maxAttachmentSize: fixture.maxAttachmentSize)!
+        guard let header = envelopeItem.header as? SentryEnvelopeAttachmentHeader else {
+            XCTFail("Header should be SentryEnvelopeAttachmentHeader")
+            return
+        }
+
+        XCTAssertEqual(header.attachmentType, .viewHierarchy)
     }
     
     func testInitWithNonExistentFileAttachment() {
@@ -266,6 +285,48 @@ class SentryEnvelopeTests: XCTestCase {
         
         writeDataToFile(data: fixture.dataTooBig)
         XCTAssertNil(SentryEnvelopeItem(attachment: Attachment(path: fixture.path), maxAttachmentSize: fixture.maxAttachmentSize))
+    }
+
+    func test_SentryEnvelopeAttachmentHeaderSerialization() {
+        let header = SentryEnvelopeAttachmentHeader(type: "SomeType", length: 10, filename: "SomeFileName", contentType: "SomeContentType", attachmentType: .viewHierarchy)
+
+        let data = header.serialize()
+        XCTAssertEqual(data["type"] as? String, "SomeType")
+        XCTAssertEqual(data["length"] as? Int, 10)
+        XCTAssertEqual(data["filename"] as? String, "SomeFileName")
+        XCTAssertEqual(data["content_type"] as? String, "SomeContentType")
+        XCTAssertEqual(data["attachment_type"] as? String, "event.view_hierarchy")
+        XCTAssertEqual(data.count, 5)
+
+        let header2 = SentryEnvelopeAttachmentHeader(type: "SomeType", length: 10)
+
+        let data2 = header2.serialize()
+        XCTAssertEqual(data2["type"] as? String, "SomeType")
+        XCTAssertEqual(data2["length"] as? Int, 10)
+        XCTAssertNil(data2["filename"])
+        XCTAssertNil(data2["content_type"])
+        XCTAssertEqual(data2["attachment_type"] as? String, "event.attachment")
+        XCTAssertEqual(data2.count, 3)
+    }
+
+    func test_SentryEnvelopeItemHeaderSerialization() {
+        let header = SentryEnvelopeItemHeader(type: "SomeType", length: 10, filenname: "SomeFileName", contentType: "SomeContentType")
+
+        let data = header.serialize()
+        XCTAssertEqual(data["type"] as? String, "SomeType")
+        XCTAssertEqual(data["length"] as? Int, 10)
+        XCTAssertEqual(data["filename"] as? String, "SomeFileName")
+        XCTAssertEqual(data["content_type"] as? String, "SomeContentType")
+        XCTAssertEqual(data.count, 4)
+
+        let header2 = SentryEnvelopeItemHeader(type: "SomeType", length: 10)
+
+        let data2 = header2.serialize()
+        XCTAssertEqual(data2.count, 2)
+        XCTAssertEqual(data2["type"] as? String, "SomeType")
+        XCTAssertEqual(data2["length"] as? Int, 10)
+        XCTAssertNil(data2["filename"])
+        XCTAssertNil(data2["content_type"])
     }
     
     func testInitWithDataAttachment_MaxAttachmentSize() {

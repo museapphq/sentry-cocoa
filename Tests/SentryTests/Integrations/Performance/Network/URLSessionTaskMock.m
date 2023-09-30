@@ -1,8 +1,10 @@
 #import "URLSessionTaskMock.h"
-#import "SentryCurrentDate.h"
+#import "SentryCurrentDateProvider.h"
+#import "SentryDependencyContainer.h"
 
 @implementation URLSessionDataTaskMock {
     NSURLRequest *_request;
+    NSURLRequest *_currentRequest;
     NSURLResponse *_response;
     NSError *_error;
     NSDate *_resumeDate;
@@ -21,7 +23,7 @@
     return _state;
 }
 
-- (NSURLRequest *)currentRequest
+- (NSURLRequest *)originalRequest
 {
     return _request;
 }
@@ -48,7 +50,7 @@
 
 - (void)resume
 {
-    _resumeDate = SentryCurrentDate.date;
+    _resumeDate = SentryDependencyContainer.sharedInstance.dateProvider.date;
 }
 
 - (int64_t)countOfBytesSent
@@ -59,6 +61,16 @@
 - (int64_t)countOfBytesReceived
 {
     return DATA_BYTES_RECEIVED;
+}
+
+- (NSURLRequest *)currentRequest
+{
+    return _currentRequest;
+}
+
+- (void)setCurrentRequest:(NSURLRequest *)request
+{
+    _currentRequest = request;
 }
 
 #pragma clang diagnostic push
@@ -74,6 +86,7 @@
 {
     if (self = [super init]) {
         _request = request;
+        _currentRequest = [_request mutableCopy];
     }
     return self;
 }
@@ -279,6 +292,11 @@
 - (NSURLRequest *)currentRequest
 {
     @throw @"currentRequest not available";
+}
+
+- (NSURLSessionTaskState)state
+{
+    return NSURLSessionTaskStateRunning;
 }
 
 @end

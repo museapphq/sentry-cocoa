@@ -9,11 +9,6 @@
 #import <SentryScopeSyncC.h>
 #import <SentryUser.h>
 
-@interface
-SentryCrashScopeObserver ()
-
-@end
-
 @implementation SentryCrashScopeObserver
 
 - (instancetype)initWithMaxBreadcrumbs:(NSInteger)maxBreadcrumbs
@@ -90,10 +85,9 @@ SentryCrashScopeObserver ()
     sentrycrash_scopesync_setLevel([json bytes]);
 }
 
-- (void)addBreadcrumb:(SentryBreadcrumb *)crumb
+- (void)addSerializedBreadcrumb:(NSDictionary *)crumb
 {
-    NSDictionary *serialized = [crumb serialize];
-    NSData *json = [self toJSONEncodedCString:serialized];
+    NSData *json = [self toJSONEncodedCString:crumb];
     if (json == nil) {
         return;
     }
@@ -156,8 +150,7 @@ SentryCrashScopeObserver ()
                                     options:SentryCrashJSONEncodeOptionSorted
                                       error:&error];
         if (error != nil) {
-            NSString *message = [NSString stringWithFormat:@"Could not serialize %@", error];
-            [SentryLog logWithMessage:message andLevel:kSentryLevelError];
+            SENTRY_LOG_ERROR(@"Could not serialize %@", error);
             return nil;
         }
     }

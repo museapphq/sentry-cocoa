@@ -1,6 +1,9 @@
 #import "SentryAppStartMeasurement.h"
-#import "NSDate+SentryExtras.h"
-#import <Foundation/Foundation.h>
+
+#if SENTRY_HAS_UIKIT
+
+#    import "NSDate+SentryExtras.h"
+#    import <Foundation/Foundation.h>
 
 @implementation SentryAppStartMeasurement
 
@@ -11,6 +14,7 @@
     didFinishLaunchingTimestamp:(NSDate *)didFinishLaunchingTimestamp
 {
     return [self initWithType:type
+                          isPreWarmed:NO
                     appStartTimestamp:appStartTimestamp
                              duration:duration
                  runtimeInitTimestamp:runtimeInitTimestamp
@@ -19,6 +23,7 @@
 }
 
 - (instancetype)initWithType:(SentryAppStartType)type
+                      isPreWarmed:(BOOL)isPreWarmed
                 appStartTimestamp:(NSDate *)appStartTimestamp
                          duration:(NSTimeInterval)duration
              runtimeInitTimestamp:(NSDate *)runtimeInitTimestamp
@@ -27,6 +32,7 @@
 {
     if (self = [super init]) {
         _type = type;
+        _isPreWarmed = isPreWarmed;
         _appStartTimestamp = appStartTimestamp;
         _duration = duration;
         _runtimeInitTimestamp = runtimeInitTimestamp;
@@ -38,3 +44,5 @@
 }
 
 @end
+
+#endif // SENTRY_HAS_UIKIT

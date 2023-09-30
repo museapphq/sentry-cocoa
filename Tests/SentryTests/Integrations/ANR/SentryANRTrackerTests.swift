@@ -1,3 +1,4 @@
+import SentryTestUtils
 import XCTest
 
 #if os(iOS) || os(tvOS) || targetEnvironment(macCatalyst)
@@ -18,9 +19,10 @@ class SentryANRTrackerTests: XCTestCase, SentryANRTrackerDelegate {
         
         init() {
             crashWrapper = TestSentryCrashWrapper.sharedInstance()
+            SentryDependencyContainer.sharedInstance().dateProvider = currentDate
         }
     }
-    
+
     override func setUp() {
         super.setUp()
         
@@ -32,7 +34,6 @@ class SentryANRTrackerTests: XCTestCase, SentryANRTrackerDelegate {
         
         sut = SentryANRTracker(
             timeoutInterval: fixture.timeoutInterval,
-            currentDateProvider: fixture.currentDate,
             crashWrapper: fixture.crashWrapper,
             dispatchQueueWrapper: fixture.dispatchQueue,
             threadWrapper: fixture.threadWrapper)
@@ -41,13 +42,16 @@ class SentryANRTrackerTests: XCTestCase, SentryANRTrackerDelegate {
     override func tearDown() {
         super.tearDown()
         sut.clear()
+        
+        wait(for: [fixture.threadWrapper.threadFinishedExpectation], timeout: 5)
+        XCTAssertEqual(0, fixture.threadWrapper.threads.count)
     }
     
     func start() {
         sut.addListener(self)
     }
     
-    func testContinousANR_OneReported() {
+    func testContinuousANR_OneReported() {
         fixture.dispatchQueue.blockBeforeMainBlock = {
             self.advanceTime(bySeconds: self.fixture.timeoutInterval)
             return false
@@ -86,8 +90,9 @@ class SentryANRTrackerTests: XCTestCase, SentryANRTrackerDelegate {
     
     func testMultipleANRs_MultipleReported() {
         anrDetectedExpectation.expectedFulfillmentCount = 3
+        let expectedANRStoppedInvocations = 2
         anrStoppedExpectation.isInverted = false
-        anrStoppedExpectation.expectedFulfillmentCount = 2
+        anrStoppedExpectation.expectedFulfillmentCount = expectedANRStoppedInvocations
         
         fixture.dispatchQueue.blockBeforeMainBlock = {
             self.advanceTime(bySeconds: self.fixture.timeoutInterval)
@@ -101,9 +106,13 @@ class SentryANRTrackerTests: XCTestCase, SentryANRTrackerDelegate {
         start()
         
         wait(for: [anrDetectedExpectation, anrStoppedExpectation], timeout: waitTimeout)
+        XCTAssertEqual(expectedANRStoppedInvocations, fixture.dispatchQueue.dispatchAsyncInvocations.count)
     }
     
     func testAppSuspended_NoANR() {
+        // To avoid spamming the test logs
+        SentryLog.configure(true, diagnosticLevel: .error)
+        
         anrDetectedExpectation.isInverted = true
         fixture.dispatchQueue.blockBeforeMainBlock = {
             let delta = self.fixture.timeoutInterval * 2
@@ -113,6 +122,8 @@ class SentryANRTrackerTests: XCTestCase, SentryANRTrackerDelegate {
         start()
         
         wait(for: [anrDetectedExpectation, anrStoppedExpectation], timeout: waitTimeout)
+        
+        setTestDefaultLogLevel()
     }
     
     func testRemoveListener_StopsReportingANRs() {
@@ -153,6 +164,45 @@ class SentryANRTrackerTests: XCTestCase, SentryANRTrackerDelegate {
 
     }
     
+    func testNotRemovingDeallocatedListener_DoesNotRetainListener_AndStopsTracking() {
+        anrDetectedExpectation.isInverted = true
+        anrStoppedExpectation.isInverted = true
+        
+        // So ARC deallocates SentryANRTrackerTestDelegate
+        let addListenersCount = 10
+        func addListeners() {
+            for _ in 0..<addListenersCount {
+                self.sut.addListener(SentryANRTrackerTestDelegate())
+            }
+        }
+        addListeners()
+        
+        sut.addListener(self)
+        sut.removeListener(self)
+        
+        let listeners = Dynamic(sut).listeners.asObject as? NSHashTable<NSObject>
+        
+        XCTAssertGreaterThan(addListenersCount, listeners?.count ?? addListenersCount)
+        
+        wait(for: [anrDetectedExpectation, anrStoppedExpectation], timeout: 0.0)
+    }
+    
+    func testClearDirectlyAfterStart() {
+        anrDetectedExpectation.isInverted = true
+        
+        let invocations = 10
+        for _ in 0..<invocations {
+            sut.addListener(self)
+            sut.clear()
+        }
+        
+        wait(for: [anrDetectedExpectation, anrStoppedExpectation], timeout: 1)
+        
+        XCTAssertEqual(0, fixture.threadWrapper.threads.count)
+        XCTAssertEqual(1, fixture.threadWrapper.threadStartedInvocations.count)
+        XCTAssertEqual(1, fixture.threadWrapper.threadFinishedInvocations.count)
+    }
+    
     func anrDetected() {
         anrDetectedExpectation.fulfill()
     }
@@ -162,7 +212,7 @@ class SentryANRTrackerTests: XCTestCase, SentryANRTrackerDelegate {
     }
     
     private func advanceTime(bySeconds: TimeInterval) {
-        fixture.currentDate.setDate(date: fixture.currentDate.date().addingTimeInterval(bySeconds))
+        fixture.currentDate.setDate(date: SentryDependencyContainer.sharedInstance().dateProvider.date().addingTimeInterval(bySeconds))
     }
 }
 

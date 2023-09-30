@@ -51,18 +51,45 @@ Test can either be ran inside from Xcode or via
 make test
 ```
 
+### Flaky tests
+
+If you see a test being flaky, you should ideally fix it immediately. If that's not feasible, you can disable the test in the test scheme by unchecking it in the Test action:
+
+![Disabling test cases via the Xcode scheme](./develop-docs/disabling_tests_xcode_scheme.png)
+
+or by right-clicking it in the Tests Navigator (⌘6):
+
+![Disabling test cases via the Xcode Tests navigator](./develop-docs/disabling_tests_xcode_tests_navigator.png)
+
+Then create a GH issue with the [flaky test issue template](https://github.com/getsentry/sentry-cocoa/issues/new?assignees=&labels=Platform%3A+Cocoa%2CType%3A+Flaky+Test&template=flaky-test.yml). 
+
+Disabling the test in the scheme has the advantage that the test report will state "X tests passed, Y tests failed, Z tests skipped", as well as maintaining a centralized list of skipped tests (look in Sentry.xcscheme) and they will be grayed out when viewing in the Xcode Tests Navigator (⌘6):
+
+![How Xcode displays skipped tests in the Tests Navigator](./develop-docs/xcode_tests_navigator_with_skipped_test.png)
+
 ## Code Formatting
+
 Please follow the convention of removing the copyright code comments at the top of files. We only keep them inside [SentryCrash](/SentryCrash/),
 as the code is based on [KSCrash](https://github.com/kstenerud/KSCrash).
 
-All Objective-C, C and C++ needs to be formatted with [Clang Format](http://clang.llvm.org/docs/ClangFormat.html). The configuration can be found in [`.clang-format`](./.clang-format). Simply run the make task before submitting your changes for review:
+All Objective-C, C and C++ needs to be formatted with [Clang Format](http://clang.llvm.org/docs/ClangFormat.html). The configuration can be found in [`.clang-format`](./.clang-format). Simply run the make task, which runs automatically with git pre commit, before submitting your changes for review:
 
 ```sh
 make format
 ```
 
+### GH actions suddenly formats code differently
+
+It can be that it uses a different clang-format version, than you local computer. Please run `brew install clang-format`, and ensure that your version (run `clang-format --version`) matches the one from GH actions.
+
+**More information:**
+We always use the latest version of clang-format in homebrew in [our GH actions](https://github.com/getsentry/sentry-cocoa/blob/bdaf35331fa9dc67fc318e4a25b92cdc9b0c0ed7/.github/workflows/format-code.yml#L19-L20) for formatting the code.
+As we use homebrew for setting up the development environment,  homebrew only contains formulas for clang-format 8, 11, or the latest, and we want to use the latest clang-format version; we accept that we don't pin clang-format to a specific version. Using the GH action images clang-format version doesn't work, as it can be different than the one from homebrew.
+This means if homebrew updates the [formula](https://formulae.brew.sh/formula/) for the default clang-format version so does our GH actions job. If the GH actions job suddenly starts to format code differently than your local make format, please compare your clang-format version with the GH actions jobs version.
+
 ## Linting
-We use [Swiftlint](https://github.com/realm/SwiftLint) and Clang-Format. For Swiftlint we keep a seperate [config file](/Tests/.swiftlint) for the tests. To run all the linters locally execute:
+
+We use [Swiftlint](https://github.com/realm/SwiftLint) and Clang-Format. For SwiftLint, we keep a multiple config files for the tests and samples, cause some rules don't make sense for testing and sample code. To run all the linters locally execute:
 
 ```sh
 make lint
@@ -80,9 +107,19 @@ To make a header public follow these steps:
 * Add it to the Umbrella Header [Sentry.h](/Sources/Sentry/Public/Sentry.h).
 * Set the target membership to public.
 
+## Configuring certificates and provisioning profiles locally
+
+You can run samples in a real device without changing certificates and provisioning profiles if you are a Sentry employee with access to Sentry profiles repository and 1Password account.
+
+* Configure your environment to use SSH to access GitHub. Follow [this instructions](https://docs.github.com/en/authentication/connecting-to-github-with-ssh).
+* You will need `Cocoa codesigning match encryption password` from your Sentry 1Password account.
+* run `fastlane match_local`
+
+This will setup certificates and provisioning profiles into your machine, but in order to be able to run a sample in a real device you need to register that device with Sentry AppConnect account, add the device to the provisioning profile you want to use, download the profile again and open it with Xcode.
+
 ## Final Notes
 
 When contributing to the codebase, please make note of the following:
 
-- Non-trivial PRs will not be accepted without tests (see above).
-- Please do not bump version numbers yourself.
+* Non-trivial PRs will not be accepted without tests (see above).
+* Please do not bump version numbers yourself.

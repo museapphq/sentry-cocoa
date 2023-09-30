@@ -17,18 +17,17 @@ typedef void (^SentrySwizzleSendActionCallback)(
  */
 @interface SentrySwizzleWrapper : NSObject
 
-@property (class, readonly, nonatomic) SentrySwizzleWrapper *sharedInstance;
-
 #if SENTRY_HAS_UIKIT
 - (void)swizzleSendAction:(SentrySwizzleSendActionCallback)callback forKey:(NSString *)key;
 
 - (void)removeSwizzleSendActionForKey:(NSString *)key;
-#endif
 
 /**
  * For testing purposes.
  */
 - (void)removeAllCallbacks;
+
+#endif
 
 @end
 

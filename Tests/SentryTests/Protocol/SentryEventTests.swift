@@ -1,11 +1,12 @@
 import Sentry
+import SentryTestUtils
 import XCTest
 
 class SentryEventTests: XCTestCase {
 
     func testInitWithLevel() {
         let dateProvider = TestCurrentDateProvider()
-        CurrentDate.setCurrentDateProvider(dateProvider)
+        SentryDependencyContainer.sharedInstance().dateProvider = dateProvider
         
         let event = Event(level: .debug)
         
@@ -41,6 +42,7 @@ class SentryEventTests: XCTestCase {
         XCTAssertNotNil(actual["user"] as? [String: Any])
         XCTAssertEqual(TestData.event.modules, actual["modules"] as? [String: String])
         XCTAssertNotNil(actual["stacktrace"] as? [String: Any])
+        XCTAssertNotNil(actual["request"] as? [String: Any])
         
         let crumbs = actual["breadcrumbs"] as? [[String: Any]]
         XCTAssertNotNil(crumbs)
@@ -75,16 +77,6 @@ class SentryEventTests: XCTestCase {
         let actual = event.serialize()
         XCTAssertEqual(TestData.timestamp.timeIntervalSince1970, actual["start_timestamp"] as? TimeInterval
         )
-    }
-    
-    func testSerializeWithExtraTransaction() {
-        let event = TestData.event
-        event.transaction = nil
-        let sentryTransaction = "trans"
-        event.extra?["__sentry_transaction"] = sentryTransaction
-        
-        let actual = event.serialize()
-        XCTAssertEqual(sentryTransaction, actual["transaction"] as? String)
     }
     
     func testSerializeWithoutBreadcrumbs() {

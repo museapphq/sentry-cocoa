@@ -1,8 +1,8 @@
-#import "SentryUIViewControllerSwizzling.h"
+#if SENTRY_HAS_UIKIT
+
+#    import "SentryUIViewControllerSwizzling.h"
 
 NS_ASSUME_NONNULL_BEGIN
-
-#if SENTRY_HAS_UIKIT
 
 @interface
 SentryUIViewControllerSwizzling (Test)
@@ -21,8 +21,9 @@ SentryUIViewControllerSwizzling (Test)
 
 - (void)swizzleUIViewControllersOfClassesInImageOf:(nullable Class)class;
 
+- (void)swizzleUIViewControllersOfImage:(NSString *)imageName;
 @end
 
-#endif
-
 NS_ASSUME_NONNULL_END
+
+#endif // SENTRY_HAS_UIKIT

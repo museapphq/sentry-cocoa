@@ -1,3 +1,4 @@
+#import "SentryByteCountFormatter.h"
 #import "SentryNSDataTracker.h"
 #import "SentryOptions.h"
 #import "SentrySDK.h"
@@ -49,8 +50,8 @@
     [someData writeToFile:filePath atomically:true];
 
     [SentrySDK startWithConfigureOptions:^(SentryOptions *_Nonnull options) {
-        options.enableAutoPerformanceTracking = YES;
-        options.enableFileIOTracking = YES;
+        options.enableAutoPerformanceTracing = YES;
+        options.enableFileIOTracing = YES;
         options.tracesSampleRate = @1;
     }];
 }
@@ -211,19 +212,18 @@
     XCTAssertEqual(parentTransaction.children.count, 1);
     XCTAssertEqual([ioSpan.data[@"file.size"] unsignedIntValue], someData.length);
     XCTAssertEqualObjects(ioSpan.data[@"file.path"], filePath);
-    XCTAssertEqualObjects(operation, ioSpan.context.operation);
+    XCTAssertEqualObjects(operation, ioSpan.operation);
 
     NSString *filename = filePath.lastPathComponent;
 
     if ([operation isEqualToString:SENTRY_FILE_READ_OPERATION]) {
-        XCTAssertEqualObjects(ioSpan.context.spanDescription, filename);
+        XCTAssertEqualObjects(ioSpan.spanDescription, filename);
     } else {
-        NSString *expectedString = [NSString
-            stringWithFormat:@"%@ (%@)", filename,
-            [NSByteCountFormatter stringFromByteCount:someData.length
-                                           countStyle:NSByteCountFormatterCountStyleBinary]];
+        NSString *expectedString =
+            [NSString stringWithFormat:@"%@ (%@)", filename,
+                      [SentryByteCountFormatter bytesCountDescription:someData.length]];
 
-        XCTAssertEqualObjects(ioSpan.context.spanDescription, expectedString);
+        XCTAssertEqualObjects(ioSpan.spanDescription, expectedString);
     }
 }
 

@@ -8,20 +8,39 @@
 {
     TestSentryCrashWrapper *instance = [[self alloc] init];
     instance.internalActiveDurationSinceLastCrash = NO;
+    instance.internalDurationFromCrashStateInitToLastCrash = 0;
     instance.internalActiveDurationSinceLastCrash = 0;
     instance.internalIsBeingTraced = NO;
     instance.internalIsSimulatorBuild = NO;
     instance.internalIsApplicationInForeground = YES;
     instance.installAsyncHooksCalled = NO;
-    instance.closeCalled = NO;
-    instance.internalFreeMemory = 0;
-    instance.internalAppMemory = 0;
+    instance.uninstallAsyncHooksCalled = NO;
+    instance.internalFreeMemorySize = 0;
+    instance.internalAppMemorySize = 0;
+    instance.internalFreeStorageSize = 0;
     return instance;
+}
+
+- (void)startBinaryImageCache
+{
+    _binaryCacheStarted = YES;
+    [super startBinaryImageCache];
+}
+
+- (void)stopBinaryImageCache
+{
+    [super stopBinaryImageCache];
+    _binaryCacheStopped = YES;
 }
 
 - (BOOL)crashedLastLaunch
 {
     return self.internalCrashedLastLaunch;
+}
+
+- (NSTimeInterval)durationFromCrashStateInitToLastCrash
+{
+    return self.internalDurationFromCrashStateInitToLastCrash;
 }
 
 - (NSTimeInterval)activeDurationSinceLastCrash
@@ -49,9 +68,9 @@
     self.installAsyncHooksCalled = YES;
 }
 
-- (void)close
+- (void)uninstallAsyncHooks
 {
-    self.closeCalled = YES;
+    self.uninstallAsyncHooksCalled = YES;
 }
 
 - (NSDictionary *)systemInfo
@@ -59,14 +78,19 @@
     return @{};
 }
 
-- (uint64_t)freeMemory
+- (bytes)freeMemorySize
 {
-    return self.internalFreeMemory;
+    return self.internalFreeMemorySize;
 }
 
-- (uint64_t)appMemory
+- (bytes)appMemorySize
 {
-    return self.internalAppMemory;
+    return self.internalAppMemorySize;
+}
+
+- (bytes)freeStorageSize
+{
+    return self.internalFreeStorageSize;
 }
 
 @end

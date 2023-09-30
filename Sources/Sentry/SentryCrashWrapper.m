@@ -1,8 +1,8 @@
 #import "SentryCrashWrapper.h"
 #import "SentryCrash.h"
+#import "SentryCrashBinaryImageCache.h"
 #import "SentryCrashMonitor_AppState.h"
 #import "SentryCrashMonitor_System.h"
-#import "SentryHook.h"
 #import <Foundation/Foundation.h>
 #import <SentryCrashCachedData.h>
 #import <SentryCrashDebug.h>
@@ -26,6 +26,11 @@ NS_ASSUME_NONNULL_BEGIN
     return SentryCrash.sharedInstance.crashedLastLaunch;
 }
 
+- (NSTimeInterval)durationFromCrashStateInitToLastCrash
+{
+    return sentrycrashstate_currentState()->durationFromCrashStateInitToLastCrash;
+}
+
 - (NSTimeInterval)activeDurationSinceLastCrash
 {
     return SentryCrash.sharedInstance.activeDurationSinceLastCrash;
@@ -46,23 +51,6 @@ NS_ASSUME_NONNULL_BEGIN
     return sentrycrashstate_currentState()->applicationIsInForeground;
 }
 
-- (void)installAsyncHooks
-{
-    sentrycrash_install_async_hooks();
-}
-
-- (void)close
-{
-    SentryCrash *handler = [SentryCrash sharedInstance];
-    @synchronized(handler) {
-        [handler setMonitoring:SentryCrashMonitorTypeNone];
-        handler.onCrash = NULL;
-    }
-
-    sentrycrash_deactivate_async_hooks();
-    sentrycrashccd_close();
-}
-
 - (NSDictionary *)systemInfo
 {
     static NSDictionary *sharedInfo = nil;
@@ -71,12 +59,17 @@ NS_ASSUME_NONNULL_BEGIN
     return sharedInfo;
 }
 
-- (uint64_t)freeMemory
+- (bytes)freeMemorySize
 {
-    return sentrycrashcm_system_freememory();
+    return sentrycrashcm_system_freememory_size();
 }
 
-- (uint64_t)appMemory
+- (bytes)freeStorageSize
+{
+    return sentrycrashcm_system_freestorage_size();
+}
+
+- (bytes)appMemorySize
 {
     task_vm_info_data_t info;
     mach_msg_type_number_t size = TASK_VM_INFO_COUNT;
@@ -86,6 +79,16 @@ NS_ASSUME_NONNULL_BEGIN
     }
 
     return 0;
+}
+
+- (void)startBinaryImageCache
+{
+    sentrycrashbic_startCache();
+}
+
+- (void)stopBinaryImageCache
+{
+    sentrycrashbic_stopCache();
 }
 
 @end

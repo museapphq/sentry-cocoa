@@ -33,8 +33,8 @@ extension Tracer {
             options.sessionTrackingIntervalMillis = 5_000
             // Sampling 100% - In Production you probably want to adjust this
             options.tracesSampleRate = 1.0
-            options.enableFileIOTracking = true
-            options.enableCoreDataTracking = true
+            options.enableFileIOTracing = true
+            options.enableCoreDataTracing = true
             options.profilesSampleRate = 1.0
             options.attachScreenshot = true
             options.attachViewHierarchy = true
@@ -43,6 +43,7 @@ extension Tracer {
 
         SentrySDK.configureScope { scope in
             scope.setTag(value: setUpInDidFinishLaunching ? "didFinishLaunching" : "willFinishLaunching", key: "launch-method")
+            scope.setTag(value: "\(ProcessInfo.processInfo.arguments.contains("--io.sentry.sample.trending-movies.launch-arg.efficient-implementation"))", key: "efficient-implementation")
         }
     }
 }
@@ -74,12 +75,12 @@ extension Tracer {
         var span: Span
 
         func annotate(key: String, value: String) {
-            print("[TrendingMovies] annotating span \(span.context.spanId.sentrySpanIdString), key \(key) and value \(value)")
-            span.context.setTag(value: value, key: key)
+            print("[TrendingMovies] annotating span \(span.spanId.sentrySpanIdString), key \(key) and value \(value)")
+            span.setTag(value: value, key: key)
         }
 
         func end() {
-            print("[TrendingMovies] ending span \(span.context.spanId.sentrySpanIdString)")
+            print("[TrendingMovies] ending span \(span.spanId.sentrySpanIdString)")
             span.finish()
         }
     }

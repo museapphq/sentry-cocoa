@@ -1,6 +1,6 @@
 #import "SentrySwizzleWrapper.h"
+#import "SentryLog.h"
 #import "SentrySwizzle.h"
-#import <Foundation/Foundation.h>
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -11,28 +11,19 @@ static NSMutableDictionary<NSString *, SentrySwizzleSendActionCallback>
     *sentrySwizzleSendActionCallbacks;
 #endif
 
-+ (SentrySwizzleWrapper *)sharedInstance
-{
-    static SentrySwizzleWrapper *instance = nil;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{ instance = [[self alloc] init]; });
-    return instance;
-}
-
+#if SENTRY_HAS_UIKIT
 + (void)initialize
 {
-#if SENTRY_HAS_UIKIT
     if (self == [SentrySwizzleWrapper class]) {
         sentrySwizzleSendActionCallbacks = [NSMutableDictionary new];
     }
-#endif
 }
 
-#if SENTRY_HAS_UIKIT
 - (void)swizzleSendAction:(SentrySwizzleSendActionCallback)callback forKey:(NSString *)key
 {
     // We need to make a copy of the block to avoid ARC of autoreleasing it.
     sentrySwizzleSendActionCallbacks[key] = [callback copy];
+    SENTRY_LOG_DEBUG(@"Swizzling sendAction for %@", key);
 
     if (sentrySwizzleSendActionCallbacks.count != 1) {
         return;
@@ -74,16 +65,12 @@ static NSMutableDictionary<NSString *, SentrySwizzleSendActionCallback>
 {
     return sentrySwizzleSendActionCallbacks;
 }
-#endif
 
 - (void)removeAllCallbacks
 {
-#if SENTRY_HAS_UIKIT
     [sentrySwizzleSendActionCallbacks removeAllObjects];
-#endif
 }
 
-#if SENTRY_HAS_UIKIT
 // For test purpose
 + (BOOL)hasCallbacks
 {

@@ -1,8 +1,6 @@
 import Foundation
+import SentryTestUtils
 
-// Even if we don't run this test below OSX 10.12 we expect the actual
-// implementation to be thread safe.
-@available(OSX 10.12, *)
 public class TestRequestManager: NSObject, RequestManager {
     
     private var nextResponse: () -> HTTPURLResponse? = { return nil }
@@ -19,6 +17,9 @@ public class TestRequestManager: NSObject, RequestManager {
     }
     
     var responseDelay = 0.0
+    let responseDispatchGroup = DispatchGroup()
+    var waitForResponseDispatchGroup = false
+    
     public func add( _ request: URLRequest, completionHandler: SentryRequestOperationFinished? = nil) {
         
         requests.record(request)
@@ -27,6 +28,11 @@ public class TestRequestManager: NSObject, RequestManager {
         let error = self.nextError
         group.enter()
         queue.asyncAfter(deadline: .now() + responseDelay, execute: {
+            
+            if self.waitForResponseDispatchGroup {
+                self.responseDispatchGroup.waitWithTimeout()
+            }
+            
             if let handler = completionHandler {
                 handler(response, error)
             }

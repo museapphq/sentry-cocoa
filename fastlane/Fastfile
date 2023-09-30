@@ -3,17 +3,12 @@ default_platform(:ios)
 platform :ios do
   ios_swift_infoplist_path = "./Samples/iOS-Swift/iOS-Swift/Info.plist"
   ios_swift_clip_infoplist_path = "./Samples/iOS-Swift/iOS-SwiftClip/Info.plist"
+  configuration = if is_ci then 'TestCI' else 'Test' end
 
-  lane :bump_bundle_version do
-    set_info_plist_value(
-      path: ios_swift_infoplist_path,
-      key: "CFBundleVersion",
-      value: ENV["FASTLANE_BUNDLE_VERSION"]
-    )
-    set_info_plist_value(
-      path: ios_swift_clip_infoplist_path,
-      key: "CFBundleVersion",
-      value: ENV["FASTLANE_BUNDLE_VERSION"]
+  lane :bump_build_number do
+    increment_build_number(
+      build_number: ENV["FASTLANE_BUILD_NUMBER"],
+      xcodeproj: "./Samples/iOS-Swift/iOS-Swift.xcodeproj"
     )
   end
 
@@ -24,30 +19,64 @@ platform :ios do
       xcodeproj: "./Samples/iOS-Swift/iOS-Swift.xcodeproj",
       target: "iOS-Swift"
       )
-    version = version.split("-", -1)[0]
+    new_version = version.split("-", -1)[0]
+
+    # We also need to replace the MARKETING_VERSION otherwise the build will fail with 
+    # error: The CFBundleShortVersionString of an App Clip ('8.9.0-beta.1') must match that of its containing parent app ('8.9.0').
+    sh "sed -i '' 's/MARKETING_VERSION = #{version}/MARKETING_VERSION = #{new_version}/g' ../Samples/iOS-Swift/iOS-Swift.xcodeproj/project.pbxproj"
 
     set_info_plist_value(
       path: ios_swift_infoplist_path,
       key: "CFBundleShortVersionString",
-      value: version
+      value: new_version
     )
     set_info_plist_value(
       path: ios_swift_clip_infoplist_path,
       key: "CFBundleShortVersionString",
-      value: version
+      value: new_version
     )
 
-    sentryInfoPlistPath = "./Sources/Sentry/Info.plist"
+    sentryInfoPlistPath = "./Sources/Resources/Info.plist"
     set_info_plist_value(
       path: sentryInfoPlistPath,
       key: "CFBundleShortVersionString",
-      value: version
+      value: new_version
     )
     set_info_plist_value(
       path: sentryInfoPlistPath,
       key: "CFBundleVersion",
-      value: version
+      value: new_version
     )
+  end
+
+  desc "Run match for local development"
+    lane :match_local do
+     match(
+       type: "development",
+       app_identifier: ["io.sentry.sample.iOS-Swift",
+         "io.sentry.sample.iOS-Swift.Clip",
+         "io.sentry.iOS-SwiftUITests.xctrunner",
+         "io.sentry.sample.movies.ProfileDataGeneratorUITest",
+         "io.sentry.sample.TrendingMovies",
+         "io.sentry.cocoa.perf-test-app-plain",
+         "io.sentry.*",
+         "io.sentry.iOS-Benchmarking.xctrunner",
+         "io.sentry.cocoa.perf-test-app-sentry"],
+        readonly: true
+     )
+     match(
+       type: "appstore",
+       app_identifier: ["io.sentry.sample.iOS-Swift",
+         "io.sentry.sample.iOS-Swift.Clip",
+         "io.sentry.iOS-SwiftUITests.xctrunner",
+         "io.sentry.sample.movies.ProfileDataGeneratorUITest",
+         "io.sentry.sample.TrendingMovies",
+         "io.sentry.cocoa.perf-test-app-plain",
+         "io.sentry.*",
+         "io.sentry.iOS-Benchmarking.xctrunner",
+         "io.sentry.cocoa.perf-test-app-sentry"],
+        readonly: true
+     )
   end
 
   desc "Build iOS-Swift with Release"
@@ -64,8 +93,8 @@ platform :ios do
     build_app(
       workspace: "Sentry.xcworkspace",
       scheme: "iOS-Swift",
-      include_bitcode: true,
-      include_symbols: false,
+      include_bitcode: false,
+      include_symbols: true,
       export_method: "app-store",
       archive_path: "iOS-Swift"
     )
@@ -108,7 +137,7 @@ platform :ios do
     )
 
     # don't use gym here because it always appends a "build" command which fails, since this is a test target not configured for running
-    sh "set -o pipefail && xcodebuild -workspace ../Sentry.xcworkspace -scheme iOS-SwiftUITests -derivedDataPath ../DerivedData -destination 'generic/platform=iOS' build-for-testing | xcpretty"
+    sh "set -o pipefail && xcodebuild -workspace ../Sentry.xcworkspace -scheme iOS-SwiftUITests -derivedDataPath ../DerivedData -destination 'generic/platform=iOS' -configuration Test build-for-testing | xcpretty"
 
     delete_keychain(name: "fastlane_tmp_keychain") unless is_ci
   end
@@ -186,32 +215,31 @@ platform :ios do
       key_content: ENV["APP_STORE_CONNECT_KEY"]
     )
 
-    testflight
-
-    download_dsyms(
-      wait_for_dsym_processing: true,
-      build_number: ENV["FASTLANE_BUNDLE_VERSION"]
+    testflight(
+      skip_waiting_for_build_processing: true,
     )
 
     sentry_upload_dif(
       auth_token: ENV["SENTRY_AUTH_TOKEN"],
       org_slug: 'sentry-sdks',
       project_slug: 'sentry-cocoa',
-      symbol_maps: 'iOS-Swift.xcarchive/BCSymbolMaps/'
+      include_sources: true
     )
   end
 
   lane :ui_tests_ios_swiftui do
     run_tests(
       workspace: "Sentry.xcworkspace",
-      scheme: "iOS-SwiftUI"
+      scheme: "iOS-SwiftUI",
+      configuration: configuration
     )
   end
 
   lane :ui_tests_ios_objc do
     run_tests(
       workspace: "Sentry.xcworkspace",
-      scheme: "iOS-ObjectiveC"
+      scheme: "iOS-ObjectiveC",
+      configuration: configuration
     )
   end
 
@@ -220,21 +248,24 @@ platform :ios do
       workspace: "Sentry.xcworkspace",
       scheme: "iOS-Swift",
       device: options[:device],
-      address_sanitizer: options[:address_sanitizer]
+      address_sanitizer: options[:address_sanitizer],
+      configuration: configuration
     )
   end
 
   lane :ui_tests_tvos_swift do
     run_tests(
       workspace: "Sentry.xcworkspace",
-      scheme: "tvOS-Swift"
+      scheme: "tvOS-Swift",
+      configuration: configuration
     )
   end
 
   desc "Build Perf-test app without Sentry"
   lane :build_perf_test_app_plain do
-
-    setup_ci
+    setup_ci(
+      force: true
+    )
 
     sync_code_signing(
       type: "development",
@@ -257,7 +288,9 @@ platform :ios do
 
   desc "Build Perf-test app with Sentry"
   lane :build_perf_test_app_sentry do
-    setup_ci
+    setup_ci(
+      force: true
+    )
 
     sync_code_signing(
       type: "development",

@@ -1,28 +1,45 @@
 #import "SentryTime.h"
 
-#if SENTRY_TARGET_PROFILING_SUPPORTED
+#import <Foundation/Foundation.h>
+#import <ctime>
+#import <mach/mach_time.h>
 
-#    import <Foundation/Foundation.h>
-#    import <ctime>
-#    import <mach/mach_time.h>
+#import "SentryMachLogging.hpp"
 
-#    import "SentryMachLogging.hpp"
+uint64_t
+timeIntervalToNanoseconds(double seconds)
+{
+    NSCAssert(seconds >= 0, @"Seconds must be a positive value");
+    NSCAssert(seconds <= UINT64_MAX / 1e9,
+        @"Value of seconds is too great; will overflow if casted to a uint64_t");
+    return (uint64_t)(seconds * 1e9);
+}
 
 uint64_t
 getAbsoluteTime(void)
 {
-    if (@available(macOS 10.12, iOS 10.0, *)) {
+    if (@available(macOS 10.12, iOS 10.0, tvOS 10.0, watchOS 3.0, *)) {
         return clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
     }
     return mach_absolute_time();
 }
 
+bool
+orderedChronologically(uint64_t a, uint64_t b)
+{
+    return b >= a;
+}
+
 uint64_t
 getDurationNs(uint64_t startTimestamp, uint64_t endTimestamp)
 {
-    assert(endTimestamp >= startTimestamp);
+    NSCAssert(endTimestamp >= startTimestamp, @"Inputs must be chronologically ordered.");
+    if (endTimestamp < startTimestamp) {
+        return 0;
+    }
+
     uint64_t duration = endTimestamp - startTimestamp;
-    if (@available(macOS 10.12, iOS 10.0, *)) {
+    if (@available(macOS 10.12, iOS 10.0, tvOS 10.0, watchOS 3.0, *)) {
         return duration;
     }
 
@@ -33,5 +50,3 @@ getDurationNs(uint64_t startTimestamp, uint64_t endTimestamp)
     duration /= info.denom;
     return duration;
 }
-
-#endif

@@ -1,13 +1,16 @@
+#if os(iOS) || os(tvOS) || targetEnvironment(macCatalyst)
+
 import Sentry
+import SentryTestUtils
 import XCTest
 
-#if os(iOS) || os(tvOS) || targetEnvironment(macCatalyst)
 class SentryUIViewControllerSwizzlingTests: XCTestCase {
     
     private class Fixture {
         let dispatchQueue = TestSentryDispatchQueueWrapper()
         let objcRuntimeWrapper = SentryTestObjCRuntimeWrapper()
         let subClassFinder: TestSubClassFinder
+        let processInfoWrapper = SentryNSProcessInfoWrapper()
         
         init() {
             subClassFinder = TestSubClassFinder(dispatchQueue: dispatchQueue, objcRuntimeWrapper: objcRuntimeWrapper)
@@ -23,15 +26,15 @@ class SentryUIViewControllerSwizzlingTests: XCTestCase {
         }
         
         var sut: SentryUIViewControllerSwizzling {
-            return SentryUIViewControllerSwizzling(options: options, dispatchQueue: dispatchQueue, objcRuntimeWrapper: objcRuntimeWrapper, subClassFinder: subClassFinder)
+            return SentryUIViewControllerSwizzling(options: options, dispatchQueue: dispatchQueue, objcRuntimeWrapper: objcRuntimeWrapper, subClassFinder: subClassFinder, processInfoWrapper: processInfoWrapper)
         }
         
         var sutWithDefaultObjCRuntimeWrapper: SentryUIViewControllerSwizzling {
-            return SentryUIViewControllerSwizzling(options: options, dispatchQueue: dispatchQueue, objcRuntimeWrapper: SentryDefaultObjCRuntimeWrapper.sharedInstance(), subClassFinder: subClassFinder)
+            return SentryUIViewControllerSwizzling(options: options, dispatchQueue: dispatchQueue, objcRuntimeWrapper: SentryDefaultObjCRuntimeWrapper.sharedInstance(), subClassFinder: subClassFinder, processInfoWrapper: processInfoWrapper)
         }
         
         var testableSut: TestSentryUIViewControllerSwizzling {
-            return TestSentryUIViewControllerSwizzling(options: options, dispatchQueue: dispatchQueue, objcRuntimeWrapper: objcRuntimeWrapper, subClassFinder: subClassFinder)
+            return TestSentryUIViewControllerSwizzling(options: options, dispatchQueue: dispatchQueue, objcRuntimeWrapper: objcRuntimeWrapper, subClassFinder: subClassFinder, processInfoWrapper: processInfoWrapper)
         }
         
         var delegate: MockApplication.MockApplicationDelegate {
@@ -72,18 +75,23 @@ class SentryUIViewControllerSwizzlingTests: XCTestCase {
     }
     
     func testUIViewController_loadView_noTransactionBoundToScope() {
+        fixture.sut.start()
         let controller = UIViewController()
         controller.loadView()
         XCTAssertNil(SentrySDK.span)
     }
     
     func testViewControllerWithoutLoadView_TransactionBoundToScope() {
+        fixture.sut.start()
         let controller = TestViewController()
         controller.loadView()
         XCTAssertNotNil(SentrySDK.span)
     }
     
     func testViewControllerWithLoadView_TransactionBoundToScope() {
+        let d = class_getImageName(type(of: self))!
+        fixture.processInfoWrapper.setProcessPath(String(cString: d))
+
         fixture.sut.start()
         let controller = ViewWithLoadViewController()
         
@@ -93,7 +101,7 @@ class SentryUIViewControllerSwizzlingTests: XCTestCase {
         XCTAssertNotNil(span)
         
         let transactionName = Dynamic(span).transactionContext.name.asString
-        let expectedTransactionName = SentryUIViewControllerSanitizer.sanitizeViewControllerName(controller)
+        let expectedTransactionName = SwiftDescriptor.getObjectClassName(controller)
         XCTAssertEqual(expectedTransactionName, transactionName)
     }
 
@@ -252,6 +260,12 @@ class SentryUIViewControllerSwizzlingTests: XCTestCase {
         
         XCTAssertEqual(1, fixture.subClassFinder.invocations.count)
     }
+
+    func testSwizzlingFromProcessPath_WhenNoAppToFind() {
+        let sut = fixture.testableSut
+        sut.start()
+        XCTAssertTrue(sut.swizzleUIViewControllersOfImageCalled)
+    }
 }
 
 class MockApplication: NSObject, SentryUIApplicationProtocol {
@@ -276,12 +290,13 @@ class MockApplication: NSObject, SentryUIApplicationProtocol {
     }
 }
 
+// swiftlint:disable prohibited_super_call
 class ViewWithLoadViewController: UIViewController {
     override func loadView() {
-        super.loadView()
         // empty on purpose
     }
 }
+// swiftlint:enable prohibited_super_call
 
 class ObjectWithWindowsProperty: NSObject {
     var resultOfWindows: Any?
@@ -300,9 +315,15 @@ class ObjectWithWindowsProperty: NSObject {
 class TestSentryUIViewControllerSwizzling: SentryUIViewControllerSwizzling {
     
     var viewControllers = [UIViewController]()
+    var swizzleUIViewControllersOfImageCalled = false
     
     override func swizzleRootViewControllerAndDescendant(_ rootViewController: UIViewController) {
         viewControllers.append(rootViewController)
+    }
+
+    override func swizzleUIViewControllers(ofImage imageName: String) {
+        swizzleUIViewControllersOfImageCalled = true
+        super.swizzleUIViewControllers(ofImage: imageName)
     }
 }
 
@@ -311,7 +332,8 @@ class TestSubClassFinder: SentrySubClassFinder {
     var invocations = Invocations<(imageName: String, block: (AnyClass) -> Void)>()
     override func actOnSubclassesOfViewController(inImage imageName: String, block: @escaping (AnyClass) -> Void) {
         invocations.record((imageName, block))
+        super.actOnSubclassesOfViewController(inImage: imageName, block: block)
     }
 }
 
-#endif
+#endif // os(iOS) || os(tvOS) || targetEnvironment(macCatalyst)
