@@ -7,8 +7,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (instancetype)init
 {
-    self = [super init];
-    if (self) {
+    if (self = [super init]) {
         self.function = @"<redacted>";
     }
     return self;
@@ -28,8 +27,10 @@ NS_ASSUME_NONNULL_BEGIN
     [serializedData setValue:self.imageAddress forKey:@"image_addr"];
     [serializedData setValue:self.instructionAddress forKey:@"instruction_addr"];
     [serializedData setValue:self.platform forKey:@"platform"];
-    [serializedData setBoolValue:self.inApp forKey:@"in_app"];
-    [serializedData setBoolValue:self.stackStart forKey:@"stack_start"];
+    [SentryDictionary setBoolValue:self.inApp forKey:@"in_app" intoDictionary:serializedData];
+    [SentryDictionary setBoolValue:self.stackStart
+                            forKey:@"stack_start"
+                    intoDictionary:serializedData];
 
     return serializedData;
 }

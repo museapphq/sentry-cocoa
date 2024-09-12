@@ -1,15 +1,15 @@
 #import "SentrySystemEventBreadcrumbs.h"
 #import "SentryBreadcrumb.h"
 #import "SentryBreadcrumbDelegate.h"
-#import "SentryCurrentDateProvider.h"
+#import "SentryDefines.h"
 #import "SentryDependencyContainer.h"
 #import "SentryLog.h"
 #import "SentryNSNotificationCenterWrapper.h"
+#import "SentrySwift.h"
 
-// all those notifications are not available for tvOS
-#if TARGET_OS_IOS
+#if TARGET_OS_IOS && SENTRY_HAS_UIKIT
+
 #    import <UIKit/UIKit.h>
-#endif
 
 @interface
 SentrySystemEventBreadcrumbs ()
@@ -32,17 +32,12 @@ SentrySystemEventBreadcrumbs ()
 
 - (void)startWithDelegate:(id<SentryBreadcrumbDelegate>)delegate
 {
-#if TARGET_OS_IOS
     UIDevice *currentDevice = [UIDevice currentDevice];
     [self startWithDelegate:delegate currentDevice:currentDevice];
-#else
-    SENTRY_LOG_DEBUG(@"NO iOS -> [SentrySystemEventsBreadcrumbs.start] does nothing.");
-#endif
 }
 
 - (void)stop
 {
-#if TARGET_OS_IOS
     // Remove the observers with the most specific detail possible, see
     // https://developer.apple.com/documentation/foundation/nsnotificationcenter/1413994-removeobserver
     [self.notificationCenterWrapper removeObserver:self name:UIKeyboardDidShowNotification];
@@ -57,7 +52,6 @@ SentrySystemEventBreadcrumbs ()
                                               name:UIDeviceOrientationDidChangeNotification];
     [self.notificationCenterWrapper removeObserver:self
                                               name:UIDeviceOrientationDidChangeNotification];
-#endif
 }
 
 - (void)dealloc
@@ -67,7 +61,6 @@ SentrySystemEventBreadcrumbs ()
     [self.notificationCenterWrapper removeObserver:self];
 }
 
-#if TARGET_OS_IOS
 /**
  * Only used for testing, call startWithDelegate instead.
  */
@@ -86,9 +79,7 @@ SentrySystemEventBreadcrumbs ()
     [self initScreenshotObserver];
     [self initTimezoneObserver];
 }
-#endif
 
-#if TARGET_OS_IOS
 - (void)initBatteryObserver:(UIDevice *)currentDevice
 {
     if (currentDevice.batteryMonitoringEnabled == NO) {
@@ -111,8 +102,15 @@ SentrySystemEventBreadcrumbs ()
 - (void)batteryStateChanged:(NSNotification *)notification
 {
     // Notifications for battery level change are sent no more frequently than once per minute
-    NSMutableDictionary<NSString *, id> *batteryData = [self getBatteryStatus:notification.object];
-    batteryData[@"action"] = @"BATTERY_STATE_CHANGE";
+    UIDevice *currentDevice = notification.object;
+    // The object of an NSNotification may be nil.
+    if (currentDevice == nil) {
+        SENTRY_LOG_DEBUG(
+            @"UIDevice of NSNotification was nil. Won't create battery changed breadcrumb.");
+        return;
+    }
+
+    NSDictionary<NSString *, id> *batteryData = [self getBatteryStatus:notification.object];
 
     SentryBreadcrumb *crumb = [[SentryBreadcrumb alloc] initWithLevel:kSentryLevelInfo
                                                              category:@"device.event"];
@@ -121,7 +119,7 @@ SentrySystemEventBreadcrumbs ()
     [_delegate addBreadcrumb:crumb];
 }
 
-- (NSMutableDictionary<NSString *, id> *)getBatteryStatus:(UIDevice *)currentDevice
+- (NSDictionary<NSString *, id> *)getBatteryStatus:(UIDevice *)currentDevice
 {
     // borrowed and adapted from
     // https://github.com/apache/cordova-plugin-battery-status/blob/master/src/ios/CDVBattery.m
@@ -133,7 +131,8 @@ SentrySystemEventBreadcrumbs ()
         isPlugged = YES;
     }
     float currentLevel = [currentDevice batteryLevel];
-    NSMutableDictionary<NSString *, id> *batteryData = [NSMutableDictionary new];
+    NSMutableDictionary<NSString *, id> *batteryData =
+        [NSMutableDictionary dictionaryWithCapacity:3];
 
     // W3C spec says level must be null if it is unknown
     if ((currentState != UIDeviceBatteryStateUnknown) && (currentLevel != -1.0)) {
@@ -144,6 +143,8 @@ SentrySystemEventBreadcrumbs ()
     }
 
     batteryData[@"plugged"] = @(isPlugged);
+    batteryData[@"action"] = @"BATTERY_STATE_CHANGE";
+
     return batteryData;
 }
 
@@ -249,11 +250,15 @@ SentrySystemEventBreadcrumbs ()
     NSInteger offset = SentryDependencyContainer.sharedInstance.dateProvider.timezoneOffset;
 
     crumb.type = @"system";
-    crumb.data = @{
-        @"action" : @"TIMEZONE_CHANGE",
-        @"previous_seconds_from_gmt" : storedTimezoneOffset,
-        @"current_seconds_from_gmt" : @(offset)
-    };
+
+    NSMutableDictionary *dataDict =
+        [@{ @"action" : @"TIMEZONE_CHANGE", @"current_seconds_from_gmt" : @(offset) } mutableCopy];
+
+    if (storedTimezoneOffset != nil) {
+        dataDict[@"previous_seconds_from_gmt"] = storedTimezoneOffset;
+    }
+
+    crumb.data = dataDict;
     [_delegate addBreadcrumb:crumb];
 
     [self updateStoredTimezone];
@@ -265,6 +270,6 @@ SentrySystemEventBreadcrumbs ()
         storeTimezoneOffset:SentryDependencyContainer.sharedInstance.dateProvider.timezoneOffset];
 }
 
-#endif
-
 @end
+
+#endif // TARGET_OS_IOS && SENTRY_HAS_UIKIT

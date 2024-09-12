@@ -28,6 +28,7 @@
 #import "SentryCrashMonitorType.h"
 #import "SentryCrashReportFilter.h"
 #import "SentryCrashReportWriter.h"
+#import "SentryDefines.h"
 
 typedef enum {
     SentryCrashDemangleLanguageNone = 0,
@@ -57,9 +58,13 @@ static NSString *const SENTRYCRASH_REPORT_ATTACHMENTS_ITEM = @"attachments";
 +(void)resetState;
 
 #pragma mark - Configuration -
+SENTRY_NO_INIT
 
 /** Init SentryCrash instance with custom base path. */
-- (id)initWithBasePath:(NSString *)basePath;
+- (instancetype)initWithBasePath:(NSString *)basePath NS_DESIGNATED_INITIALIZER;
+
+/** Cache directory base path. */
+@property (nonatomic, readwrite, retain) NSString *basePath;
 
 /** A dictionary containing any info you'd like to appear in crash reports. Must
  * contain only JSON-safe data: NSString for keys, and NSDictionary, NSArray,
@@ -184,10 +189,6 @@ static NSString *const SENTRYCRASH_REPORT_ATTACHMENTS_ITEM = @"attachments";
 
 #pragma mark - API -
 
-/** Get the singleton instance of the crash reporter.
- */
-+ (SentryCrash *)sharedInstance;
-
 /** Install the crash reporter.
  * The reporter will record crashes, but will not send any crash reports unless
  * sink is set.
@@ -241,12 +242,6 @@ static NSString *const SENTRYCRASH_REPORT_ATTACHMENTS_ITEM = @"attachments";
  * @param reportID An ID of report to delete.
  */
 - (void)deleteReportWithID:(NSNumber *)reportID;
-
-/**
- * Only needed for testing.
- */
-- (void)setSentryNSNotificationCenterWrapper:
-    (SentryNSNotificationCenterWrapper *)notificationCenter;
 
 @end
 

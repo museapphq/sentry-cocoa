@@ -6,21 +6,59 @@
 #    define SENTRY_EXTERN extern __attribute__((visibility("default")))
 #endif
 
-#if TARGET_OS_IOS || TARGET_OS_TV
+#ifndef TARGET_OS_VISION
+#    define TARGET_OS_VISION 0
+#endif
+
+// SENTRY_UIKIT_AVAILABLE basically means: are we on a platform where we can link UIKit?
+#if TARGET_OS_IOS || TARGET_OS_TV || TARGET_OS_VISION
+#    define SENTRY_UIKIT_AVAILABLE 1
+#else
+#    define SENTRY_UIKIT_AVAILABLE 0
+#endif
+
+// SENTRY_HAS_UIKIT means we're on a platform that can link UIKit and we're building a configuration
+// that will allow it to be autolinked. SENTRY_NO_UIKIT is set in GCC_PREPROCESSOR_DEFINITIONS
+// for configurations that we will not allow to link UIKit by setting CLANG_MODULES_AUTOLINK to NO.
+#if SENTRY_UIKIT_AVAILABLE && !SENTRY_NO_UIKIT
 #    define SENTRY_HAS_UIKIT 1
 #else
 #    define SENTRY_HAS_UIKIT 0
 #endif
 
-#if TARGET_OS_IOS || TARGET_OS_OSX || TARGET_OS_MACCATALYST
+#if TARGET_OS_OSX || TARGET_OS_MACCATALYST
+#    define SENTRY_TARGET_MACOS 1
+#else
+#    define SENTRY_TARGET_MACOS 0
+#endif
+
+#if (TARGET_OS_OSX || TARGET_OS_MACCATALYST) && !SENTRY_NO_UIKIT
+#    define SENTRY_TARGET_MACOS_HAS_UI 1
+#else
+#    define SENTRY_TARGET_MACOS_HAS_UI 0
+#endif
+
+#if TARGET_OS_IOS || SENTRY_TARGET_MACOS
 #    define SENTRY_HAS_METRIC_KIT 1
 #else
 #    define SENTRY_HAS_METRIC_KIT 0
 #endif
 
+#if SENTRY_HAS_UIKIT && !TARGET_OS_VISION
+#    define SENTRY_TARGET_REPLAY_SUPPORTED 1
+#else
+#    define SENTRY_TARGET_REPLAY_SUPPORTED 0
+#endif
+
 #define SENTRY_NO_INIT                                                                             \
     -(instancetype)init NS_UNAVAILABLE;                                                            \
     +(instancetype) new NS_UNAVAILABLE;
+
+#if !TARGET_OS_WATCH && !(TARGET_OS_VISION && SENTRY_NO_UIKIT == 1)
+#    define SENTRY_HAS_REACHABILITY 1
+#else
+#    define SENTRY_HAS_REACHABILITY 0
+#endif
 
 @class SentryEvent, SentryBreadcrumb, SentrySamplingContext;
 @protocol SentrySpan;
@@ -48,6 +86,25 @@ typedef SentryBreadcrumb *_Nullable (^SentryBeforeBreadcrumbCallback)(
  * To avoid sending the event altogether, return nil instead.
  */
 typedef SentryEvent *_Nullable (^SentryBeforeSendEventCallback)(SentryEvent *_Nonnull event);
+
+/**
+ * Use this block to drop or modify a span before the SDK sends it to Sentry. Return @c nil to drop
+ * the span.
+ */
+typedef id<SentrySpan> _Nullable (^SentryBeforeSendSpanCallback)(id<SentrySpan> _Nonnull span);
+
+/**
+ * Block can be used to decide if the SDK should capture a screenshot or not. Return @c true if the
+ * SDK should capture a screenshot, return @c false if not. This callback doesn't work for crashes.
+ */
+typedef BOOL (^SentryBeforeCaptureScreenshotCallback)(SentryEvent *_Nonnull event);
+
+/**
+ * Block can be used to decide if the SDK should capture a view hierarchy or not. Return @c true if
+ * the SDK should capture a view hierarchy, return @c false if not. This callback doesn't work for
+ * crashes.
+ */
+typedef BOOL (^SentryBeforeCaptureViewHierarchyCallback)(SentryEvent *_Nonnull event);
 
 /**
  * A callback to be notified when the last program execution terminated with a crash.
@@ -79,6 +136,16 @@ typedef NSNumber *_Nullable (^SentryTracesSamplerCallback)(
 typedef void (^SentrySpanCallback)(id<SentrySpan> _Nullable span);
 
 /**
+ * A callback block which gets called right before a metric is about to be emitted.
+
+ * @param key  The key of the metric.
+ * @param tags A dictionary of key-value pairs associated with the metric.
+ * @return BOOL YES if the metric should be emitted, NO otherwise.
+ */
+typedef BOOL (^SentryBeforeEmitMetricCallback)(
+    NSString *_Nonnull key, NSDictionary<NSString *, NSString *> *_Nonnull tags);
+
+/**
  * Log level.
  */
 typedef NS_ENUM(NSInteger, SentryLogLevel) {
@@ -91,16 +158,8 @@ typedef NS_ENUM(NSInteger, SentryLogLevel) {
 /**
  * Sentry level.
  */
-typedef NS_ENUM(NSUInteger, SentryLevel) {
-    // Defaults to None which doesn't get serialized
-    kSentryLevelNone = 0,
-    // Goes from Debug to Fatal so possible to: (level > Info) { .. }
-    kSentryLevelDebug = 1,
-    kSentryLevelInfo = 2,
-    kSentryLevelWarning = 3,
-    kSentryLevelError = 4,
-    kSentryLevelFatal = 5
-};
+typedef NS_ENUM(NSUInteger,
+    SentryLevel); // This is a forward declaration, the actual enum is implemented in Swift.
 
 /**
  * Static internal helper to convert enum to string.
@@ -124,11 +183,5 @@ static NSString *_Nonnull const kSentryFalseString = @"false";
 /**
  * Transaction name source.
  */
-typedef NS_ENUM(NSInteger, SentryTransactionNameSource) {
-    kSentryTransactionNameSourceCustom = 0,
-    kSentryTransactionNameSourceUrl,
-    kSentryTransactionNameSourceRoute,
-    kSentryTransactionNameSourceView,
-    kSentryTransactionNameSourceComponent,
-    kSentryTransactionNameSourceTask
-};
+typedef NS_ENUM(NSInteger, SentryTransactionNameSource); // This is a forward declaration, the
+                                                         // actual enum is implemented in Swift.

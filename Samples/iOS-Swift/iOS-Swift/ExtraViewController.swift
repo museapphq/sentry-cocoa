@@ -25,17 +25,14 @@ class ExtraViewController: UIViewController {
             }
         }
 
-        if let uiTestName = ProcessInfo.processInfo.environment["io.sentry.ui-test.test-name"] {
+        if let uiTestName = ProcessInfo.processInfo.environment["--io.sentry.ui-test.test-name"] {
             uiTestNameLabel.text = uiTestName
         }
-
-        SentrySDK.reportFullyDisplayed()
-
+        
         Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in
             self.framesLabel?.text = "Frames Total:\(PrivateSentrySDKOnly.currentScreenFrames.total) Slow:\(PrivateSentrySDKOnly.currentScreenFrames.slow) Frozen:\(PrivateSentrySDKOnly.currentScreenFrames.frozen)"
         }
 
-        SentrySDK.reportFullyDisplayed()
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -55,6 +52,8 @@ class ExtraViewController: UIViewController {
             self.breadcrumbLabel?.text = "{ category: \(breadcrumb["category"] ?? "nil"), parentViewController: \(data["parentViewController"] ?? "nil"), beingPresented: \(data["beingPresented"] ?? "nil"), window_isKeyWindow: \(data["window_isKeyWindow"] ?? "nil"), is_window_rootViewController: \(data["is_window_rootViewController"] ?? "nil") }"
 
         }
+        
+        SentrySDK.reportFullyDisplayed()
     }
 
     @IBAction func dsnChanged(_ sender: UITextField) {
@@ -103,38 +102,24 @@ class ExtraViewController: UIViewController {
 
     @IBAction func anrFillingRunLoop(_ sender: UIButton) {
         highlightButton(sender)
-        let buttonTitle = self.anrFillingRunLoopButton.currentTitle
-        var i = 0
-
-        func sleep(timeout: Double) {
-            let group = DispatchGroup()
-            group.enter()
-            let queue = DispatchQueue(label: "delay", qos: .background, attributes: [])
-
-            queue.asyncAfter(deadline: .now() + timeout) {
-                group.leave()
-            }
-
-            group.wait()
-        }
-
-        dispatchQueue.async {
-            for _ in 0...30 {
-                i += Int.random(in: 0...10)
-                i -= 1
-
-                DispatchQueue.main.async {
-                    sleep(timeout: 0.1)
-                    self.anrFillingRunLoopButton.setTitle("Title \(i)", for: .normal)
-                }
-            }
-
-            DispatchQueue.main.sync {
-                self.anrFillingRunLoopButton.setTitle(buttonTitle, for: .normal)
-            }
-        }
+        triggerNonFullyBlockingAppHang()
     }
 
+    @IBAction func getPasteBoardString(_ sender: Any) {
+        SentrySDK.pauseAppHangTracking()
+        
+        // Getting the pasteboard string asks for permission
+        // and the SDK would detect an ANR if we don't pause it.
+        // Make sure to copy something into the pasteboard, cause
+        // iOS only opens the system permission dialog if you do.
+        
+        if let clipboard = UIPasteboard.general.string {
+            SentrySDK.capture(message: clipboard)
+        }
+        
+        SentrySDK.resumeAppHangTracking()
+    }
+    
     @IBAction func start100Threads(_ sender: UIButton) {
         highlightButton(sender)
         for _ in 0..<100 {
@@ -168,6 +153,10 @@ class ExtraViewController: UIViewController {
         // otherwise nil
         print("\(String(describing: eventId))")
     }
+    
+    @IBAction func openWeb(_ sender: UIButton) {
+        navigationController?.pushViewController(WebViewController(), animated: true)
+    }
 
     @IBAction func captureUserFeedback(_ sender: UIButton) {
         highlightButton(sender)
@@ -194,6 +183,10 @@ class ExtraViewController: UIViewController {
     @IBAction func flush(_ sender: UIButton) {
         highlightButton(sender)
         SentrySDK.flush(timeout: 5)
+    }
+    
+    @IBAction func showTopVCInspector(_ sender: UIButton) {
+        TopViewControllerInspector.show()
     }
 
     @IBAction func close(_ sender: UIButton) {

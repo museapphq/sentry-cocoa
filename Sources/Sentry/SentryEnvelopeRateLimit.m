@@ -1,6 +1,7 @@
 #import "SentryEnvelopeRateLimit.h"
 #import "SentryDataCategoryMapper.h"
 #import "SentryEnvelope.h"
+#import "SentryEnvelopeItemHeader.h"
 #import "SentryRateLimits.h"
 #import <Foundation/Foundation.h>
 
@@ -58,7 +59,7 @@ SentryEnvelopeRateLimit ()
             = sentryDataCategoryForEnvelopItemType(item.header.type);
         if ([self.rateLimits isRateLimitActive:rateLimitCategory]) {
             [itemsToDrop addObject:item];
-            [self.delegate envelopeItemDropped:rateLimitCategory];
+            [self.delegate envelopeItemDropped:item withCategory:rateLimitCategory];
         }
     }
 

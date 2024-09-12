@@ -34,7 +34,7 @@ class SentrySessionTrackerTests: XCTestCase {
         }
         
         func setNewHubToSDK() {
-            let hub = SentryHub(client: client, andScope: nil, andCrashWrapper: self.sentryCrash)
+            let hub = SentryHub(client: client, andScope: nil, andCrashWrapper: self.sentryCrash, andDispatchQueue: SentryDispatchQueueWrapper())
             SentrySDK.setCurrentHub(hub)
         }
     }
@@ -42,10 +42,13 @@ class SentrySessionTrackerTests: XCTestCase {
     private var fixture: Fixture!
     private var sut: SessionTracker!
     
+    override class func setUp() {
+        super.setUp()
+        clearTestState()
+    }
+    
     override func setUp() {
         super.setUp()
-        
-        clearTestState()
         
         fixture = Fixture()
         
@@ -354,7 +357,7 @@ class SentrySessionTrackerTests: XCTestCase {
         sut.stop()
         
         let invocations = fixture.notificationCenter.removeObserverWithNameInvocations
-        let notificationNames = invocations.invocations.map { $0.name }
+        let notificationNames = invocations.invocations.map { $0 }
         
         assertNotificationNames(notificationNames)
     }
@@ -541,7 +544,7 @@ class SentrySessionTrackerTests: XCTestCase {
         
         // SentryCrashIntegration stores the crashed session to the disk. We emulate
         // the result here.
-        let crashedSession = SentrySession(releaseName: "1.0.0")
+        let crashedSession = SentrySession(releaseName: "1.0.0", distinctId: "some-id")
         crashedSession.environment = fixture.options.environment
         advanceTime(bySeconds: 5)
         crashedSession.endCrashed(withTimestamp: fixture.currentDateProvider.date())

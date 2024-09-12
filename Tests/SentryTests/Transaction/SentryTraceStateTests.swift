@@ -19,7 +19,9 @@ class SentryTraceContextTests: XCTestCase {
         let releaseName = "SentrySessionTrackerIntegrationTests"
         let environment = "debug"
         let sampled = "true"
+        let replayId = "some_replay_id"
         
+        @available(*, deprecated)
         init() {
             options = Options()
             options.dsn = SentryTraceContextTests.dsnAsString
@@ -33,6 +35,7 @@ class SentryTraceContextTests: XCTestCase {
             scope.setUser(User(userId: userId))
             scope.userObject?.segment = userSegment
             scope.span = tracer
+            scope.replayId = replayId
             
             traceId = tracer.traceId
         }
@@ -40,6 +43,7 @@ class SentryTraceContextTests: XCTestCase {
     
     private var fixture: Fixture!
     
+    @available(*, deprecated)
     override func setUp() {
         super.setUp()
         fixture = Fixture()
@@ -51,7 +55,7 @@ class SentryTraceContextTests: XCTestCase {
     }
     
     func testInit() {
-        let traceContext = SentryTraceContext(
+        let traceContext = TraceContext(
             trace: fixture.traceId,
             publicKey: fixture.publicKey,
             releaseName: fixture.releaseName,
@@ -59,37 +63,74 @@ class SentryTraceContextTests: XCTestCase {
             transaction: fixture.transactionName,
             userSegment: fixture.userSegment,
             sampleRate: fixture.sampleRate,
-            sampled: fixture.sampled)
+            sampled: fixture.sampled,
+            replayId: fixture.replayId
+        )
         
         assertTraceState(traceContext: traceContext)
     }
     
     func testInitWithScopeOptions() {
-        let traceContext = SentryTraceContext(scope: fixture.scope, options: fixture.options)!
+        let traceContext = TraceContext(scope: fixture.scope, options: fixture.options)!
         
         assertTraceState(traceContext: traceContext)
     }
     
     func testInitWithTracerScopeOptions() {
-        let traceContext = SentryTraceContext(tracer: fixture.tracer, scope: fixture.scope, options: fixture.options)
+        let traceContext = TraceContext(tracer: fixture.tracer, scope: fixture.scope, options: fixture.options)
         assertTraceState(traceContext: traceContext!)
     }
 
     func testInitWithTracerNotSampled() {
         let tracer = fixture.tracer
         tracer.sampled = .no
-        let traceContext = SentryTraceContext(tracer: tracer, scope: fixture.scope, options: fixture.options)
+        let traceContext = TraceContext(tracer: tracer, scope: fixture.scope, options: fixture.options)
         XCTAssertEqual(traceContext?.sampled, "false")
     }
     
     func testInitNil() {
         fixture.scope.span = nil
-        let traceContext = SentryTraceContext(scope: fixture.scope, options: fixture.options)
+        let traceContext = TraceContext(scope: fixture.scope, options: fixture.options)
         XCTAssertNil(traceContext)
     }
     
+    func testInitTraceIdOptionsSegment_WithOptionsAndSegment() throws {
+        let options = Options()
+        options.dsn = TestConstants.realDSN
+    
+        let traceId = SentryId()
+        let traceContext = TraceContext(trace: traceId, options: options, userSegment: "segment", replayId: "replayId")
+        
+        XCTAssertEqual(options.parsedDsn?.url.user, traceContext.publicKey)
+        XCTAssertEqual(traceId, traceContext.traceId)
+        XCTAssertEqual(options.releaseName, traceContext.releaseName)
+        XCTAssertEqual(options.environment, traceContext.environment)
+        XCTAssertNil(traceContext.transaction)
+        XCTAssertEqual("segment", traceContext.userSegment)
+        XCTAssertEqual(traceContext.replayId, "replayId")
+        XCTAssertNil(traceContext.sampleRate)
+        XCTAssertNil(traceContext.sampled)
+    }
+    
+    func testInitTraceIdOptionsSegment_WithOptionsOnly() throws {
+        let options = Options()
+        options.dsn = TestConstants.realDSN
+    
+        let traceId = SentryId()
+        let traceContext = TraceContext(trace: traceId, options: options, userSegment: nil, replayId: nil)
+        
+        XCTAssertEqual(options.parsedDsn?.url.user, traceContext.publicKey)
+        XCTAssertEqual(traceId, traceContext.traceId)
+        XCTAssertEqual(options.releaseName, traceContext.releaseName)
+        XCTAssertEqual(options.environment, traceContext.environment)
+        XCTAssertNil(traceContext.transaction)
+        XCTAssertNil(traceContext.userSegment)
+        XCTAssertNil(traceContext.sampleRate)
+        XCTAssertNil(traceContext.sampled)
+    }
+    
     func test_toBaggage() {
-        let traceContext = SentryTraceContext(
+        let traceContext = TraceContext(
             trace: fixture.traceId,
             publicKey: fixture.publicKey,
             releaseName: fixture.releaseName,
@@ -97,7 +138,8 @@ class SentryTraceContextTests: XCTestCase {
             transaction: fixture.transactionName,
             userSegment: fixture.userSegment,
             sampleRate: fixture.sampleRate,
-            sampled: fixture.sampled)
+            sampled: fixture.sampled,
+            replayId: fixture.replayId)
         
         let baggage = traceContext.toBaggage()
         
@@ -108,9 +150,10 @@ class SentryTraceContextTests: XCTestCase {
         XCTAssertEqual(baggage.userSegment, fixture.userSegment)
         XCTAssertEqual(baggage.sampleRate, fixture.sampleRate)
         XCTAssertEqual(baggage.sampled, fixture.sampled)
+        XCTAssertEqual(baggage.replayId, fixture.replayId)
     }
         
-    func assertTraceState(traceContext: SentryTraceContext) {
+    func assertTraceState(traceContext: TraceContext) {
         XCTAssertEqual(traceContext.traceId, fixture.traceId)
         XCTAssertEqual(traceContext.publicKey, fixture.publicKey)
         XCTAssertEqual(traceContext.releaseName, fixture.releaseName)
@@ -118,6 +161,7 @@ class SentryTraceContextTests: XCTestCase {
         XCTAssertEqual(traceContext.transaction, fixture.transactionName)
         XCTAssertEqual(traceContext.userSegment, fixture.userSegment)
         XCTAssertEqual(traceContext.sampled, fixture.sampled)
+        XCTAssertEqual(traceContext.replayId, fixture.replayId)
     }
     
 }

@@ -27,27 +27,28 @@
 
 #import "SentryCrash.h"
 
-#import "NSError+SentrySimpleConstructor.h"
 #import "SentryCrashC.h"
 #import "SentryCrashDoctor.h"
 #import "SentryCrashJSONCodecObjC.h"
 #import "SentryCrashMonitorContext.h"
 #import "SentryCrashMonitor_AppState.h"
 #import "SentryCrashMonitor_System.h"
+#import "SentryCrashNSErrorUtil.h"
 #import "SentryCrashReportFields.h"
 #import "SentryCrashReportStore.h"
-#import "SentryCrashSystemCapabilities.h"
+#import "SentryDefines.h"
 #import "SentryDependencyContainer.h"
+#import "SentryInternalCDefines.h"
 #import "SentryNSNotificationCenterWrapper.h"
-#import <NSData+Sentry.h>
+#import <SentryNSDataUtils.h>
 
-// #define SentryCrashLogger_LocalLevel TRACE
-#import "SentryCrashLogger.h"
+#import "SentryLog.h"
 
-#include <inttypes.h>
-#if SentryCrashCRASH_HAS_UIKIT
+#if SENTRY_HAS_UIKIT
 #    import <UIKit/UIKit.h>
 #endif
+
+#include <inttypes.h>
 
 // ============================================================================
 #pragma mark - Globals -
@@ -57,10 +58,10 @@
 SentryCrash ()
 
 @property (nonatomic, readwrite, retain) NSString *bundleName;
-@property (nonatomic, readwrite, retain) NSString *basePath;
 @property (nonatomic, readwrite, assign) SentryCrashMonitorType monitoringWhenUninstalled;
 @property (nonatomic, readwrite, assign) BOOL monitoringFromUninstalledToRestore;
-@property (nonatomic, strong) SentryNSNotificationCenterWrapper *notificationCenter;
+
+- (NSString *)getBundleName;
 
 @end
 
@@ -91,37 +92,16 @@ SentryCrash ()
 #pragma mark - Lifecycle -
 // ============================================================================
 
-+ (instancetype)sharedInstance
-{
-    static SentryCrash *sharedInstance = nil;
-    static dispatch_once_t onceToken;
-
-    dispatch_once(&onceToken, ^{ sharedInstance = [[SentryCrash alloc] init]; });
-    return sharedInstance;
-}
-
-- (id)init
-{
-    return [self initWithBasePath:[self getBasePath]];
-}
-
-- (id)initWithBasePath:(NSString *)basePath
+- (instancetype)initWithBasePath:(NSString *)basePath
 {
     if ((self = [super init])) {
         self.bundleName = [self getBundleName];
         self.basePath = basePath;
-        if (self.basePath == nil) {
-            SentryCrashLOG_ERROR(@"Failed to initialize crash handler. Crash "
-                                 @"reporting disabled.");
-            return nil;
-        }
         self.deleteBehaviorAfterSendAll = SentryCrashCDeleteAlways;
         self.introspectMemory = YES;
         self.maxReportCount = 5;
         self.monitoring = SentryCrashMonitorTypeProductionSafeMinimal;
         self.monitoringFromUninstalledToRestore = NO;
-        self.notificationCenter =
-            [SentryDependencyContainer sharedInstance].notificationCenterWrapper;
     }
     return self;
 }
@@ -141,11 +121,12 @@ SentryCrash ()
         NSError *error = nil;
         NSData *userInfoJSON = nil;
         if (userInfo != nil) {
-            userInfoJSON = [[SentryCrashJSONCodec encode:userInfo
-                                                 options:SentryCrashJSONEncodeOptionSorted
-                                                   error:&error] sentry_nullTerminated];
+            userInfoJSON = sentry_nullTerminated(
+                [SentryCrashJSONCodec encode:userInfo
+                                     options:SentryCrashJSONEncodeOptionSorted
+                                       error:&error]);
             if (error != NULL) {
-                SentryCrashLOG_ERROR(@"Could not serialize user info: %@", error);
+                SENTRY_LOG_ERROR(@"Could not serialize user info: %@", error);
                 return;
             }
         }
@@ -230,8 +211,6 @@ SentryCrash ()
     COPY_PRIMITIVE(parentProcessID);
     COPY_STRING(deviceAppHash);
     COPY_STRING(buildType);
-    COPY_PRIMITIVE(totalStorageSize);
-    COPY_PRIMITIVE(freeStorageSize);
     COPY_PRIMITIVE(memorySize);
     COPY_PRIMITIVE(freeMemorySize);
     COPY_PRIMITIVE(usableMemorySize);
@@ -239,13 +218,14 @@ SentryCrash ()
     return dict;
 }
 
-- (void)setSentryNSNotificationCenterWrapper:(SentryNSNotificationCenterWrapper *)notificationCenter
-{
-    self.notificationCenter = notificationCenter;
-}
-
 - (BOOL)install
 {
+    if (self.basePath == nil) {
+        SENTRY_LOG_ERROR(@"Failed to initialize crash handler. Crash "
+                         @"reporting disabled.");
+        return NO;
+    }
+
     // Restore previous monitors when uninstall was called previously
     if (self.monitoringFromUninstalledToRestore
         && self.monitoringWhenUninstalled != SentryCrashMonitorTypeNone) {
@@ -254,42 +234,49 @@ SentryCrash ()
         self.monitoringFromUninstalledToRestore = NO;
     }
 
-    _monitoring = sentrycrash_install(self.bundleName.UTF8String, self.basePath.UTF8String);
+    NSString *pathEnd = [@"SentryCrash" stringByAppendingPathComponent:[self getBundleName]];
+    NSString *installPath = [self.basePath stringByAppendingPathComponent:pathEnd];
+
+    _monitoring = sentrycrash_install(self.bundleName.UTF8String, installPath.UTF8String);
     if (self.monitoring == 0) {
         return false;
     }
 
-#if SentryCrashCRASH_HAS_UIAPPLICATION
-    [self.notificationCenter addObserver:self
-                                selector:@selector(applicationDidBecomeActive)
-                                    name:UIApplicationDidBecomeActiveNotification];
-    [self.notificationCenter addObserver:self
-                                selector:@selector(applicationWillResignActive)
-                                    name:UIApplicationWillResignActiveNotification];
-    [self.notificationCenter addObserver:self
-                                selector:@selector(applicationDidEnterBackground)
-                                    name:UIApplicationDidEnterBackgroundNotification];
-    [self.notificationCenter addObserver:self
-                                selector:@selector(applicationWillEnterForeground)
-                                    name:UIApplicationWillEnterForegroundNotification];
-    [self.notificationCenter addObserver:self
-                                selector:@selector(applicationWillTerminate)
-                                    name:UIApplicationWillTerminateNotification];
-#endif
-#if SentryCrashCRASH_HAS_NSEXTENSION
-    [self.notificationCenter addObserver:self
-                                selector:@selector(applicationDidBecomeActive)
-                                    name:NSExtensionHostDidBecomeActiveNotification];
-    [self.notificationCenter addObserver:self
-                                selector:@selector(applicationWillResignActive)
-                                    name:NSExtensionHostWillResignActiveNotification];
-    [self.notificationCenter addObserver:self
-                                selector:@selector(applicationDidEnterBackground)
-                                    name:NSExtensionHostDidEnterBackgroundNotification];
-    [self.notificationCenter addObserver:self
-                                selector:@selector(applicationWillEnterForeground)
-                                    name:NSExtensionHostWillEnterForegroundNotification];
-#endif
+#if SENTRY_HAS_UIKIT
+    SentryNSNotificationCenterWrapper *notificationCenter
+        = SentryDependencyContainer.sharedInstance.notificationCenterWrapper;
+    [notificationCenter addObserver:self
+                           selector:@selector(applicationDidBecomeActive)
+                               name:UIApplicationDidBecomeActiveNotification];
+    [notificationCenter addObserver:self
+                           selector:@selector(applicationWillResignActive)
+                               name:UIApplicationWillResignActiveNotification];
+    [notificationCenter addObserver:self
+                           selector:@selector(applicationDidEnterBackground)
+                               name:UIApplicationDidEnterBackgroundNotification];
+    [notificationCenter addObserver:self
+                           selector:@selector(applicationWillEnterForeground)
+                               name:UIApplicationWillEnterForegroundNotification];
+    [notificationCenter addObserver:self
+                           selector:@selector(applicationWillTerminate)
+                               name:UIApplicationWillTerminateNotification];
+#endif // SENTRY_HAS_UIKIT
+#if SENTRY_HAS_NSEXTENSION
+    SentryNSNotificationCenterWrapper *notificationCenter
+        = SentryDependencyContainer.sharedInstance.notificationCenterWrapper;
+    [notificationCenter addObserver:self
+                           selector:@selector(applicationDidBecomeActive)
+                               name:NSExtensionHostDidBecomeActiveNotification];
+    [notificationCenter addObserver:self
+                           selector:@selector(applicationWillResignActive)
+                               name:NSExtensionHostWillResignActiveNotification];
+    [notificationCenter addObserver:self
+                           selector:@selector(applicationDidEnterBackground)
+                               name:NSExtensionHostDidEnterBackgroundNotification];
+    [notificationCenter addObserver:self
+                           selector:@selector(applicationWillEnterForeground)
+                               name:NSExtensionHostWillEnterForegroundNotification];
+#endif // SENTRY_HAS_NSEXTENSION
 
     return true;
 }
@@ -302,20 +289,22 @@ SentryCrash ()
     self.onCrash = NULL;
     sentrycrash_uninstall();
 
-#if SentryCrashCRASH_HAS_UIAPPLICATION
-    [self.notificationCenter removeObserver:self name:UIApplicationDidBecomeActiveNotification];
-    [self.notificationCenter removeObserver:self name:UIApplicationWillResignActiveNotification];
-    [self.notificationCenter removeObserver:self name:UIApplicationDidEnterBackgroundNotification];
-    [self.notificationCenter removeObserver:self name:UIApplicationWillEnterForegroundNotification];
-    [self.notificationCenter removeObserver:self name:UIApplicationWillTerminateNotification];
-#endif
-#if SentryCrashCRASH_HAS_NSEXTENSION
-    [self.notificationCenter removeObserver:self name:NSExtensionHostDidBecomeActiveNotification];
-    [self.notificationCenter removeObserver:self name:NSExtensionHostWillResignActiveNotification];
-    [self.notificationCenter removeObserver:self
-                                       name:NSExtensionHostDidEnterBackgroundNotification];
-    [self.notificationCenter removeObserver:self
-                                       name:NSExtensionHostWillEnterForegroundNotification];
+#if SENTRY_HAS_UIKIT
+    SentryNSNotificationCenterWrapper *notificationCenter
+        = SentryDependencyContainer.sharedInstance.notificationCenterWrapper;
+    [notificationCenter removeObserver:self name:UIApplicationDidBecomeActiveNotification];
+    [notificationCenter removeObserver:self name:UIApplicationWillResignActiveNotification];
+    [notificationCenter removeObserver:self name:UIApplicationDidEnterBackgroundNotification];
+    [notificationCenter removeObserver:self name:UIApplicationWillEnterForegroundNotification];
+    [notificationCenter removeObserver:self name:UIApplicationWillTerminateNotification];
+#endif // SENTRY_HAS_UIKIT
+#if SENTRY_HAS_NSEXTENSION
+    SentryNSNotificationCenterWrapper *notificationCenter
+        = SentryDependencyContainer.sharedInstance.notificationCenterWrapper;
+    [notificationCenter removeObserver:self name:NSExtensionHostDidBecomeActiveNotification];
+    [notificationCenter removeObserver:self name:NSExtensionHostWillResignActiveNotification];
+    [notificationCenter removeObserver:self name:NSExtensionHostDidEnterBackgroundNotification];
+    [notificationCenter removeObserver:self name:NSExtensionHostWillEnterForegroundNotification];
 #endif
 }
 
@@ -323,13 +312,13 @@ SentryCrash ()
 {
     NSArray *reports = [self allReports];
 
-    SentryCrashLOG_INFO(@"Sending %d crash reports", [reports count]);
+    SENTRY_LOG_INFO(@"Sending %lu crash reports", (unsigned long)[reports count]);
 
     [self sendReports:reports
          onCompletion:^(NSArray *filteredReports, BOOL completed, NSError *error) {
-             SentryCrashLOG_DEBUG(@"Process finished with completion: %d", completed);
+             SENTRY_LOG_DEBUG(@"Process finished with completion: %d", completed);
              if (error != nil) {
-                 SentryCrashLOG_ERROR(@"Failed to send reports: %@", error);
+                 SENTRY_LOG_ERROR(@"Failed to send reports: %@", error);
              }
              if ((self.deleteBehaviorAfterSendAll == SentryCrashCDeleteOnSucess && completed)
                  || self.deleteBehaviorAfterSendAll == SentryCrashCDeleteAlways) {
@@ -379,9 +368,8 @@ SYNTHESIZE_CRASH_STATE_PROPERTY(BOOL, crashedLastLaunch)
 
     if (self.sink == nil) {
         sentrycrash_callCompletion(onCompletion, reports, NO,
-            [NSError sentryErrorWithDomain:[[self class] description]
-                                      code:0
-                               description:@"No sink set. Crash reports not sent."]);
+            sentryErrorWithDomain(
+                [[self class] description], 0, @"No sink set. Crash reports not sent."));
         return;
     }
 
@@ -469,11 +457,11 @@ SYNTHESIZE_CRASH_STATE_PROPERTY(BOOL, crashedLastLaunch)
                                error:&error];
 
     if (error != nil) {
-        SentryCrashLOG_ERROR(
+        SENTRY_LOG_ERROR(
             @"Encountered error loading crash report %" PRIx64 ": %@", reportID, error);
     }
     if (crashReport == nil) {
-        SentryCrashLOG_ERROR(@"Could not load crash report");
+        SENTRY_LOG_ERROR(@"Could not load crash report");
         return nil;
     }
 
@@ -549,23 +537,6 @@ SYNTHESIZE_CRASH_STATE_PROPERTY(BOOL, crashedLastLaunch)
     NSString *bundleName =
         [[[NSBundle mainBundle] infoDictionary] objectForKey:@"CFBundleName"] ?: @"Unknown";
     return [self clearBundleName:bundleName];
-}
-
-- (NSString *)getBasePath
-{
-    NSArray *directories
-        = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES);
-    if ([directories count] == 0) {
-        SentryCrashLOG_ERROR(@"Could not locate cache directory path.");
-        return nil;
-    }
-    NSString *cachePath = [directories objectAtIndex:0];
-    if ([cachePath length] == 0) {
-        SentryCrashLOG_ERROR(@"Could not locate cache directory path.");
-        return nil;
-    }
-    NSString *pathEnd = [@"SentryCrash" stringByAppendingPathComponent:[self getBundleName]];
-    return [cachePath stringByAppendingPathComponent:pathEnd];
 }
 
 @end

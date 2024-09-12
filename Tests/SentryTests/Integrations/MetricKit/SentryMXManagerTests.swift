@@ -1,4 +1,5 @@
 import MetricKit
+@testable import Sentry
 import SentryTestUtils
 import XCTest
 
@@ -12,6 +13,11 @@ import MetricKit
 #endif
 
 final class SentryMXManagerTests: XCTestCase {
+    
+    override func tearDown() {
+        super.tearDown()
+        clearTestState()
+    }
 
     func testReceiveNoPayloads() {
         if #available(iOS 15, macOS 12, macCatalyst 15, *) {
@@ -90,7 +96,7 @@ final class SentryMXManagerTests: XCTestCase {
         
         let callStackTree = TestMXCallStackTree()
         if withCallStackJSON {
-            callStackTree.overrides.jsonRepresentation = try contentsOfResource("metric-kit-callstack-per-thread")
+            callStackTree.overrides.jsonRepresentation = try contentsOfResource("MetricKitCallstacks/per-thread")
         }
         
         let crashDiagnostic = TestMXCrashDiagnostic()
@@ -160,23 +166,23 @@ class TestMXDiagnosticPayload: MXDiagnosticPayload {
 @available(watchOS, unavailable)
 class SentryMXManagerTestDelegate: SentryMXManagerDelegate {
 
-    var crashInvocations = Invocations<(diagnostic: MXCrashDiagnostic, callStackTree: SentryPrivate.SentryMXCallStackTree, timeStampBegin: Date, timeStampEnd: Date)>()
-    func didReceiveCrashDiagnostic(_ diagnostic: MXCrashDiagnostic, callStackTree: SentryPrivate.SentryMXCallStackTree, timeStampBegin: Date, timeStampEnd: Date) {
+    var crashInvocations = Invocations<(diagnostic: MXCrashDiagnostic, callStackTree: Sentry.SentryMXCallStackTree, timeStampBegin: Date, timeStampEnd: Date)>()
+    func didReceiveCrashDiagnostic(_ diagnostic: MXCrashDiagnostic, callStackTree: Sentry.SentryMXCallStackTree, timeStampBegin: Date, timeStampEnd: Date) {
         crashInvocations.record((diagnostic, callStackTree, timeStampBegin, timeStampEnd))
     }
     
-    var diskWriteExceptionInvocations = Invocations<(diagnostic: MXDiskWriteExceptionDiagnostic, callStackTree: SentryPrivate.SentryMXCallStackTree, timeStampBegin: Date, timeStampEnd: Date)>()
-    func didReceiveDiskWriteExceptionDiagnostic(_ diagnostic: MXDiskWriteExceptionDiagnostic, callStackTree: SentryPrivate.SentryMXCallStackTree, timeStampBegin: Date, timeStampEnd: Date) {
+    var diskWriteExceptionInvocations = Invocations<(diagnostic: MXDiskWriteExceptionDiagnostic, callStackTree: Sentry.SentryMXCallStackTree, timeStampBegin: Date, timeStampEnd: Date)>()
+    func didReceiveDiskWriteExceptionDiagnostic(_ diagnostic: MXDiskWriteExceptionDiagnostic, callStackTree: Sentry.SentryMXCallStackTree, timeStampBegin: Date, timeStampEnd: Date) {
         diskWriteExceptionInvocations.record((diagnostic, callStackTree, timeStampBegin, timeStampEnd))
     }
     
-    var cpuExceptionInvocations = Invocations<(diagnostic: MXCPUExceptionDiagnostic, callStackTree: SentryPrivate.SentryMXCallStackTree, timeStampBegin: Date, timeStampEnd: Date)>()
-    func didReceiveCpuExceptionDiagnostic(_ diagnostic: MXCPUExceptionDiagnostic, callStackTree: SentryPrivate.SentryMXCallStackTree, timeStampBegin: Date, timeStampEnd: Date) {
+    var cpuExceptionInvocations = Invocations<(diagnostic: MXCPUExceptionDiagnostic, callStackTree: Sentry.SentryMXCallStackTree, timeStampBegin: Date, timeStampEnd: Date)>()
+    func didReceiveCpuExceptionDiagnostic(_ diagnostic: MXCPUExceptionDiagnostic, callStackTree: Sentry.SentryMXCallStackTree, timeStampBegin: Date, timeStampEnd: Date) {
         cpuExceptionInvocations.record((diagnostic, callStackTree, timeStampBegin, timeStampEnd))
     }
     
-    var hangDiagnosticInvocations = Invocations<(diagnostic: MXHangDiagnostic, callStackTree: SentryPrivate.SentryMXCallStackTree, timeStampBegin: Date, timeStampEnd: Date)>()
-    func didReceiveHangDiagnostic(_ diagnostic: MXHangDiagnostic, callStackTree: SentryPrivate.SentryMXCallStackTree, timeStampBegin: Date, timeStampEnd: Date) {
+    var hangDiagnosticInvocations = Invocations<(diagnostic: MXHangDiagnostic, callStackTree: Sentry.SentryMXCallStackTree, timeStampBegin: Date, timeStampEnd: Date)>()
+    func didReceiveHangDiagnostic(_ diagnostic: MXHangDiagnostic, callStackTree: Sentry.SentryMXCallStackTree, timeStampBegin: Date, timeStampEnd: Date) {
         hangDiagnosticInvocations.record((diagnostic, callStackTree, timeStampBegin, timeStampEnd))
     }
 }

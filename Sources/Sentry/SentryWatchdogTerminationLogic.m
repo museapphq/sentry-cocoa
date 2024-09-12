@@ -8,7 +8,6 @@
 #    import <SentryCrashWrapper.h>
 #    import <SentryOptions.h>
 #    import <SentrySDK+Private.h>
-#    import <UIKit/UIKit.h>
 
 @interface
 SentryWatchdogTerminationLogic ()
@@ -52,12 +51,18 @@ SentryWatchdogTerminationLogic ()
     }
 
     // If the release name is different we assume it's an upgrade
-    if (![currentAppState.releaseName isEqualToString:previousAppState.releaseName]) {
+    if (currentAppState.releaseName != nil && previousAppState.releaseName != nil
+        && ![currentAppState.releaseName isEqualToString:previousAppState.releaseName]) {
         return NO;
     }
 
     // The OS was upgraded
     if (![currentAppState.osVersion isEqualToString:previousAppState.osVersion]) {
+        return NO;
+    }
+
+    // The app may have been terminated due to device reboot
+    if (previousAppState.systemBootTimestamp != currentAppState.systemBootTimestamp) {
         return NO;
     }
 

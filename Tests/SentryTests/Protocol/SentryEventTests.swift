@@ -3,6 +3,11 @@ import SentryTestUtils
 import XCTest
 
 class SentryEventTests: XCTestCase {
+    
+    override func tearDown() {
+        super.tearDown()
+        clearTestState()
+    }
 
     func testInitWithLevel() {
         let dateProvider = TestCurrentDateProvider()
@@ -51,8 +56,8 @@ class SentryEventTests: XCTestCase {
         let context = actual["contexts"] as? [String: [String: Any]]
         XCTAssertEqual(context?.count, 1)
         XCTAssertEqual(context?["context"]?.count, 2)
-        XCTAssertEqual(context?["context"]?["c"] as! String, "a")
-        XCTAssertEqual(context?["context"]?["date"] as! String, "1970-01-01T00:00:10.000Z")
+        XCTAssertEqual(try XCTUnwrap(context?["context"]?["c"] as? String), "a")
+        XCTAssertEqual(try XCTUnwrap(context?["context"]?["date"] as? String), "1970-01-01T00:00:10.000Z")
         
         XCTAssertNotNil(actual["message"] as? [String: Any])
         

@@ -16,7 +16,8 @@ NS_ASSUME_NONNULL_BEGIN
     return self;
 }
 
-- (instancetype)initWithName:(const char *)name attributes:(dispatch_queue_attr_t)attributes;
+- (instancetype)initWithName:(const char *)name
+                  attributes:(nullable dispatch_queue_attr_t)attributes;
 {
     if (self = [super init]) {
         _queue = dispatch_queue_create(name, attributes);
@@ -35,16 +36,20 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (void)dispatchAsyncOnMainQueue:(void (^)(void))block
 {
-    dispatch_async(dispatch_get_main_queue(), ^{
-        @autoreleasepool {
-            block();
-        }
-    });
+    if ([NSThread isMainThread]) {
+        block();
+    } else {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            @autoreleasepool {
+                block();
+            }
+        });
+    }
 }
 
-- (void)dispatchOnMainQueue:(void (^)(void))block
+- (void)dispatchSync:(void (^)(void))block
 {
-    [SentryThreadWrapper onMainThread:block];
+    dispatch_sync(_queue, block);
 }
 
 - (void)dispatchSyncOnMainQueue:(void (^)(void))block
@@ -54,6 +59,25 @@ NS_ASSUME_NONNULL_BEGIN
     } else {
         dispatch_sync(dispatch_get_main_queue(), block);
     }
+}
+
+- (BOOL)dispatchSyncOnMainQueue:(void (^)(void))block timeout:(NSTimeInterval)timeout
+{
+    if ([NSThread isMainThread]) {
+        block();
+    } else {
+        dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
+
+        dispatch_async(dispatch_get_main_queue(), ^{
+            block();
+            dispatch_semaphore_signal(semaphore);
+        });
+
+        dispatch_time_t timeout_t
+            = dispatch_time(DISPATCH_TIME_NOW, (int64_t)(timeout * NSEC_PER_SEC));
+        return dispatch_semaphore_wait(semaphore, timeout_t) == 0;
+    }
+    return YES;
 }
 
 - (void)dispatchAfter:(NSTimeInterval)interval block:(dispatch_block_t)block

@@ -9,6 +9,7 @@ class SentryWatchdogTerminationScopeObserverTests: XCTestCase {
     
     private class Fixture {
         let breadcrumb: Breadcrumb
+        let invalidJSONbreadcrumb: [String: Double]
         let options: Options
         let fileManager: SentryFileManager
         let currentDate = TestCurrentDateProvider()
@@ -17,6 +18,8 @@ class SentryWatchdogTerminationScopeObserverTests: XCTestCase {
         init() {
             breadcrumb = TestData.crumb
             breadcrumb.data = nil
+          
+            invalidJSONbreadcrumb = [ "invalid": Double.infinity ]
 
             options = Options()
             options.dsn = SentryWatchdogTerminationScopeObserverTests.dsn
@@ -48,14 +51,25 @@ class SentryWatchdogTerminationScopeObserverTests: XCTestCase {
     }
 
     // Test that we're storing the serialized breadcrumb in a proper JSON string
+    func testStoreInvalidJSONBreadcrumb() throws {
+        let breadcrumb = fixture.invalidJSONbreadcrumb
+
+        sut.addSerializedBreadcrumb(breadcrumb)
+
+        let fileOneContents = try String(contentsOfFile: fixture.fileManager.breadcrumbsFilePathOne)
+        let firstLine = fileOneContents.split(separator: "\n").first
+        XCTAssertNil(firstLine)
+    }
+  
+    // Test that we're storing the serialized breadcrumb in a proper JSON string
     func testStoreBreadcrumb() throws {
-        let breadcrumb = fixture.breadcrumb.serialize() as! [String: String]
+        let breadcrumb = try XCTUnwrap(fixture.breadcrumb.serialize() as? [String: String])
 
         sut.addSerializedBreadcrumb(breadcrumb)
 
         let fileOneContents = try String(contentsOfFile: fixture.fileManager.breadcrumbsFilePathOne)
         let firstLine = String(fileOneContents.split(separator: "\n").first!)
-        let dict = try JSONSerialization.jsonObject(with: firstLine.data(using: .utf8)!) as! [String: String]
+        let dict = try XCTUnwrap(try JSONSerialization.jsonObject(with: firstLine.data(using: .utf8)!) as? [String: String])
 
         XCTAssertEqual(dict, breadcrumb)
     }
@@ -127,12 +141,12 @@ class SentryWatchdogTerminationScopeObserverTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.fileManager.breadcrumbsFilePathTwo))
     }
     
-    func testWritingToClosedFile() {
-            let breadcrumb = fixture.breadcrumb.serialize() as! [String: String]
+    func testWritingToClosedFile() throws {
+            let breadcrumb = try XCTUnwrap(fixture.breadcrumb.serialize() as? [String: String])
 
             sut.addSerializedBreadcrumb(breadcrumb)
 
-            let fileHandle = Dynamic(sut).fileHandle.asObject as! FileHandle
+            let fileHandle = try XCTUnwrap(Dynamic(sut).fileHandle.asObject as? FileHandle)
             fileHandle.closeFile()
 
             sut.addSerializedBreadcrumb(breadcrumb)
@@ -141,8 +155,8 @@ class SentryWatchdogTerminationScopeObserverTests: XCTestCase {
             XCTAssertEqual(1, fixture.fileManager.readPreviousBreadcrumbs().count)
         }
 
-        func testWritingToFullFileSystem() {
-            let breadcrumb = fixture.breadcrumb.serialize() as! [String: String]
+        func testWritingToFullFileSystem() throws {
+            let breadcrumb = try XCTUnwrap(fixture.breadcrumb.serialize() as? [String: String])
 
             sut.addSerializedBreadcrumb(breadcrumb)
 

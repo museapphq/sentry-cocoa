@@ -1,7 +1,13 @@
+import SentryTestUtils
 import XCTest
 
 #if os(iOS) || os(tvOS) || targetEnvironment(macCatalyst)
 class SentryUIApplicationTests: XCTestCase {
+    
+    override func tearDown() {
+        super.tearDown()
+        clearTestState()
+    }
 
     func test_noScene_delegateWithNoWindow() {
         let sut = MockSentryUIApplicationTests()
@@ -34,6 +40,43 @@ class SentryUIApplicationTests: XCTestCase {
 
     //Somehow this is running under iOS 12 and is breaking the test. Disabling it.
     @available(iOS 13.0, tvOS 13.0, *)
+    func test_applicationWithScenesAndDelegateWithWindow_Unique() {
+        let sceneDelegate = TestUISceneDelegate()
+        sceneDelegate.window = UIWindow()
+        let scene1 = MockUIScene()
+        scene1.delegate = sceneDelegate
+
+        let delegate = TestApplicationDelegate()
+        delegate.window = UIWindow()
+
+        let sut = MockSentryUIApplicationTests()
+        sut.scenes = [scene1]
+        sut.appDelegate = delegate
+
+        XCTAssertEqual(sut.windows?.count, 2)
+    }
+
+    //Somehow this is running under iOS 12 and is breaking the test. Disabling it.
+    @available(iOS 13.0, tvOS 13.0, *)
+    func test_applicationWithScenesAndDelegateWithWindow_Same() {
+        let window = UIWindow()
+        let sceneDelegate = TestUISceneDelegate()
+        sceneDelegate.window = window
+        let scene1 = MockUIScene()
+        scene1.delegate = sceneDelegate
+
+        let delegate = TestApplicationDelegate()
+        delegate.window = window
+
+        let sut = MockSentryUIApplicationTests()
+        sut.scenes = [scene1]
+        sut.appDelegate = delegate
+
+        XCTAssertEqual(sut.windows?.count, 1)
+    }
+
+    //Somehow this is running under iOS 12 and is breaking the test. Disabling it.
+    @available(iOS 13.0, tvOS 13.0, *)
     func test_applicationWithScenes_noWindow() {
         let sceneDelegate = TestUISceneDelegate()
 
@@ -44,6 +87,32 @@ class SentryUIApplicationTests: XCTestCase {
         sut.scenes = [scene1]
 
         XCTAssertEqual(sut.windows?.count, 0)
+    }
+    
+    @available(iOS 13.0, tvOS 13.0, *)
+    func test_ApplicationState() {
+        let notificationCenter = TestNSNotificationCenterWrapper()
+        notificationCenter.ignoreRemoveObserver = true
+        SentryDependencyContainer.sharedInstance().notificationCenterWrapper = notificationCenter
+        
+        let sut = MockSentryUIApplicationTests()
+        XCTAssertEqual(sut.applicationState, .active)
+        
+        notificationCenter.addObserverInvocations.invocations.forEach { (observer: Any, selector: Selector, name: NSNotification.Name) in
+            if name == UIApplication.didEnterBackgroundNotification {
+                sut.perform(selector, with: observer)
+            }
+        }
+        
+        XCTAssertEqual(sut.applicationState, .background)
+        
+        notificationCenter.addObserverInvocations.invocations.forEach { (observer: Any, selector: Selector, name: NSNotification.Name) in
+            if name == UIApplication.didBecomeActiveNotification {
+                sut.perform(selector, with: observer)
+            }
+        }
+        
+        XCTAssertEqual(sut.applicationState, .active)
     }
 
     private class TestApplicationDelegate: NSObject, UIApplicationDelegate {

@@ -1,4 +1,5 @@
 @testable import Sentry
+import SentryTestUtils
 import XCTest
 
 /** Some of the test parameters are copied during debbuging a working implementation.
@@ -12,6 +13,11 @@ class SentryCrashStackEntryMapperTests: XCTestCase {
         super.setUp()
         sut = SentryCrashStackEntryMapper(inAppLogic: SentryInAppLogic(inAppIncludes: [bundleExecutable], inAppExcludes: []))
     }
+    
+    override func tearDown() {
+        super.tearDown()
+        clearTestState()
+    }
 
     func testSymbolAddress() {
         var cursor = SentryCrashStackCursor()
@@ -20,6 +26,15 @@ class SentryCrashStackEntryMapperTests: XCTestCase {
         let frame = sut.mapStackEntry(with: cursor)
         
         XCTAssertEqual("0x000000008e902bf0", frame.symbolAddress ?? "")
+    }
+    
+    func testSymbolAddress_IsZero() {
+        var cursor = SentryCrashStackCursor()
+        cursor.stackEntry.symbolAddress = 0
+        
+        let frame = sut.mapStackEntry(with: cursor)
+        
+        XCTAssertNil(frame.symbolAddress)
     }
     
     func testInstructionAddress() {

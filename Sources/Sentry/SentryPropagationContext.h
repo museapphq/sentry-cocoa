@@ -1,6 +1,8 @@
 #import <Foundation/Foundation.h>
 
-@class SentryId, SentrySpanId, SentryTraceContext, SentryTraceHeader;
+@class SentryId;
+@class SentrySpanId;
+@class SentryTraceHeader;
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -8,8 +10,6 @@ NS_ASSUME_NONNULL_BEGIN
 
 @property (nonatomic, strong) SentryId *traceId;
 @property (nonatomic, strong) SentrySpanId *spanId;
-@property (nonatomic, readonly, nullable) SentryTraceContext *traceContext;
-
 @property (nonatomic, readonly) SentryTraceHeader *traceHeader;
 
 - (NSDictionary<NSString *, NSString *> *)traceContextForEvent;

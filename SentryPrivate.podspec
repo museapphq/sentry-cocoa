@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name         = "SentryPrivate"
-  s.version      = "8.13.0"
+  s.version      = "8.36.0"
   s.summary      = "Sentry Private Library."
   s.homepage     = "https://github.com/getsentry/sentry-cocoa"
   s.license      = "mit"
@@ -8,6 +8,7 @@ Pod::Spec.new do |s|
   s.source       = { :git => "https://github.com/getsentry/sentry-cocoa.git",
                      :tag => s.version.to_s }
   s.social_media_url = 'https://getsentry.com/'
+  s.deprecated = true
 
   s.description      = <<-DESC
    Not for public use.
@@ -18,6 +19,7 @@ Pod::Spec.new do |s|
   s.osx.deployment_target = "10.13"
   s.tvos.deployment_target = "11.0"
   s.watchos.deployment_target = "4.0"
+  s.visionos.deployment_target = "1.0"
   s.module_name  = "SentryPrivate"
   s.frameworks = 'Foundation'
 

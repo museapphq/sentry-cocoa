@@ -3,6 +3,7 @@
 #import "SentryClient+Private.h"
 #import "SentryCrashMachineContext.h"
 #import "SentryCrashWrapper.h"
+#import "SentryDependencyContainer.h"
 #import "SentryDispatchQueueWrapper.h"
 #import "SentryEvent.h"
 #import "SentryException.h"
@@ -14,8 +15,12 @@
 #import "SentryThread.h"
 #import "SentryThreadInspector.h"
 #import "SentryThreadWrapper.h"
-#import <SentryDependencyContainer.h>
+#import "SentryUIApplication.h"
 #import <SentryOptions+Private.h>
+
+#if SENTRY_HAS_UIKIT
+#    import <UIKit/UIKit.h>
+#endif
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -24,6 +29,7 @@ SentryANRTrackingIntegration ()
 
 @property (nonatomic, strong) SentryANRTracker *tracker;
 @property (nonatomic, strong) SentryOptions *options;
+@property (atomic, assign) BOOL reportAppHangs;
 
 @end
 
@@ -40,6 +46,7 @@ SentryANRTrackingIntegration ()
 
     [self.tracker addListener:self];
     self.options = options;
+    self.reportAppHangs = YES;
 
     return YES;
 }
@@ -47,6 +54,16 @@ SentryANRTrackingIntegration ()
 - (SentryIntegrationOption)integrationOptions
 {
     return kIntegrationOptionEnableAppHangTracking | kIntegrationOptionDebuggerNotAttached;
+}
+
+- (void)pauseAppHangTracking
+{
+    self.reportAppHangs = NO;
+}
+
+- (void)resumeAppHangTracking
+{
+    self.reportAppHangs = YES;
 }
 
 - (void)uninstall
@@ -61,6 +78,19 @@ SentryANRTrackingIntegration ()
 
 - (void)anrDetected
 {
+    if (self.reportAppHangs == NO) {
+        SENTRY_LOG_DEBUG(@"AppHangTracking paused. Ignoring reported app hang.")
+        return;
+    }
+
+#if SENTRY_HAS_UIKIT
+    // If the app is not active, the main thread may be blocked or too busy.
+    // Since there is no UI for the user to interact, there is no need to report app hang.
+    if (SentryDependencyContainer.sharedInstance.application.applicationState
+        != UIApplicationStateActive) {
+        return;
+    }
+#endif
     SentryThreadInspector *threadInspector = SentrySDK.currentHub.getClient.threadInspector;
 
     NSArray<SentryThread *> *threads = [threadInspector getCurrentThreadsWithStackTrace];
@@ -74,8 +104,8 @@ SentryANRTrackingIntegration ()
     NSString *message = [NSString stringWithFormat:@"App hanging for at least %li ms.",
                                   (long)(self.options.appHangTimeoutInterval * 1000)];
     SentryEvent *event = [[SentryEvent alloc] initWithLevel:kSentryLevelError];
-    SentryException *sentryException = [[SentryException alloc] initWithValue:message
-                                                                         type:@"App Hanging"];
+    SentryException *sentryException =
+        [[SentryException alloc] initWithValue:message type:SentryANRExceptionType];
 
     sentryException.mechanism = [[SentryMechanism alloc] initWithType:@"AppHang"];
     sentryException.stacktrace = [threads[0] stacktrace];

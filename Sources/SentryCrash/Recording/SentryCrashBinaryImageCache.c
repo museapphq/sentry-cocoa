@@ -7,7 +7,7 @@
 #include <string.h>
 #include <unistd.h>
 
-#if TEST || TESTCI
+#if defined(TEST) || defined(TESTCI) || defined(DEBUG)
 
 typedef void (*SentryRegisterImageCallback)(const struct mach_header *mh, intptr_t vmaddr_slide);
 typedef void (*SentryRegisterFunction)(SentryRegisterImageCallback function);
@@ -57,7 +57,7 @@ sentry_resetFuncForAddRemoveImage(void)
 #    define sentry_dyld_register_func_for_remove_image(CALLBACK)                                   \
         _dyld_register_func_for_remove_image(CALLBACK)
 #    define _will_add_image()
-#endif
+#endif // defined(TEST) || defined(TESTCI) || defined(DEBUG)
 
 typedef struct SentryCrashBinaryImageNode {
     SentryCrashBinaryImage image;
@@ -75,9 +75,12 @@ static sentrycrashbic_cacheChangeCallback imageRemovedCallback = NULL;
 static void
 binaryImageAdded(const struct mach_header *header, intptr_t slide)
 {
+    pthread_mutex_lock(&binaryImagesMutex);
     if (tailNode == NULL) {
+        pthread_mutex_unlock(&binaryImagesMutex);
         return;
     }
+    pthread_mutex_unlock(&binaryImagesMutex);
     Dl_info info;
     if (!dladdr(header, &info) || info.dli_fname == NULL) {
         return;

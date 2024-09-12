@@ -46,6 +46,7 @@ class SentryAppStateManagerTests: XCTestCase {
     override func tearDown() {
         super.tearDown()
         fixture.fileManager.deleteAppState()
+        clearTestState()
     }
 
     func testStartStoresAppState() {
@@ -108,7 +109,7 @@ class SentryAppStateManagerTests: XCTestCase {
     func testUpdateAppState() {
         sut.storeCurrentAppState()
 
-        XCTAssertEqual(fixture.fileManager.readAppState()!.wasTerminated, false)
+        XCTAssertFalse(fixture.fileManager.readAppState()!.wasTerminated)
 
         sut.updateAppState { state in
             state.wasTerminated = true

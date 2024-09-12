@@ -8,10 +8,10 @@
 #import "SentryPredicateDescriptor.h"
 #import "SentrySDK+Private.h"
 #import "SentryScope+Private.h"
-#import "SentrySpanProtocol.h"
-@import SentryPrivate;
 #import "SentrySpan.h"
+#import "SentrySpanProtocol.h"
 #import "SentryStacktrace.h"
+#import "SentrySwift.h"
 #import "SentryThreadInspector.h"
 #import "SentryTraceOrigins.h"
 
@@ -48,9 +48,6 @@
         SENTRY_LOG_DEBUG(@"SentryCoreDataTracker automatically started a new span with "
                          @"description: %@, operation: %@",
             fetchSpan.description, fetchSpan.operation);
-    } else {
-        SENTRY_LOG_ERROR(
-            @"managedObjectContext:executeFetchRequest:error:originalImp: fetchSpan is nil.");
     }
 
     NSArray *result = original(request, error);
@@ -114,7 +111,7 @@
 {
     BOOL isMainThread = [NSThread isMainThread];
 
-    [span setDataValue:@(isMainThread) forKey:BLOCKED_MAIN_THREAD];
+    [span setDataValue:@(isMainThread) forKey:SPAN_DATA_BLOCKED_MAIN_THREAD];
     NSMutableArray<NSString *> *systems = [NSMutableArray<NSString *> array];
     NSMutableArray<NSString *> *names = [NSMutableArray<NSString *> array];
     [context.persistentStoreCoordinator.persistentStores enumerateObjectsUsingBlock:^(

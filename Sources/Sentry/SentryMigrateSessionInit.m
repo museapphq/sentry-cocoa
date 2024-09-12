@@ -1,5 +1,6 @@
 #import "SentryMigrateSessionInit.h"
 #import "SentryEnvelope.h"
+#import "SentryEnvelopeItemHeader.h"
 #import "SentryEnvelopeItemType.h"
 #import "SentryLog.h"
 #import "SentrySerialization.h"
@@ -98,8 +99,7 @@ NS_ASSUME_NONNULL_BEGIN
                                          items:envelopeItemsWithUpdatedSession];
 
     NSError *error;
-    NSData *envelopeWithInitFlagData = [SentrySerialization dataWithEnvelope:envelopeWithInitFlag
-                                                                       error:&error];
+    NSData *envelopeWithInitFlagData = [SentrySerialization dataWithEnvelope:envelopeWithInitFlag];
     [envelopeWithInitFlagData writeToFile:envelopeFilePath
                                   options:NSDataWritingAtomic
                                     error:&error];

@@ -4,11 +4,16 @@ import UIKit
 
 class TableViewController: UITableViewController {
     var spanObserver: SpanObserver?
+    @IBOutlet var label: UILabel!
     
     override func viewDidLoad() {
         super.viewDidLoad()
-        
+        label.text = "Gradient Table View"
         spanObserver = createTransactionObserver(forCallback: assertTransaction)
+    }
+    
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
         SentrySDK.reportFullyDisplayed()
     }
     

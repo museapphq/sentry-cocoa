@@ -6,6 +6,7 @@
 #import "SentryCrashSymbolicator.h"
 #import "SentryFrame.h"
 #import "SentryFrameRemover.h"
+#import "SentryLog.h"
 #import "SentryStacktrace.h"
 #import <dlfcn.h>
 
@@ -41,7 +42,7 @@ SentryStacktraceBuilder ()
             // skip the marker frame
             continue;
         }
-        if (self.symbolicate == false || stackCursor.symbolicate(&stackCursor)) {
+        if (self.symbolicate == NO || stackCursor.symbolicate(&stackCursor)) {
             frame = [self.crashStackEntryMapper mapStackEntryWithCursor:stackCursor];
             [frames addObject:frame];
         }
@@ -106,6 +107,7 @@ SentryStacktraceBuilder ()
 
 - (nullable SentryStacktrace *)buildStacktraceForCurrentThreadAsyncUnsafe
 {
+    SENTRY_LOG_DEBUG(@"Building async-unsafe stack trace...");
     SentryCrashStackCursor stackCursor;
     sentrycrashsc_initSelfThread(&stackCursor, 0);
     stackCursor.symbolicate = sentrycrashsymbolicator_symbolicate_async_unsafe;
